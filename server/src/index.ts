@@ -6,6 +6,7 @@ import morgan from "morgan";
 import path from "path";
 import adminRoutes from "./routes/adminRouter";
 import translateRoutes from "./routes/translateRouter";
+import dictionaryRoutes from "./routes/dictionaryRoutes";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -52,6 +53,7 @@ console.log(
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/translate", translateRoutes);
+app.use("/api/dictionary", dictionaryRoutes);
 app.get("/api/health", (_, res) => res.json({ status: "ok" }));
 
 if (process.env.NODE_ENV === "production") {

@@ -15,6 +15,8 @@ const MAX_HANDS = 2;
 const HAND_VECTOR_SIZE = LANDMARK_COUNT * COORDS_PER_POINT;
 const FRAME_VECTOR_SIZE = HAND_VECTOR_SIZE * MAX_HANDS;
 
+const DEFAULT_K = 5;
+
 // transform hand landmarks into a normalized vector
 function normalizeHand(hand: Landmark[] | undefined): number[] {
   if (!hand || hand.length !== LANDMARK_COUNT) {
@@ -50,13 +52,9 @@ export function frameToVector(frame: Frame): number[] {
     return new Array(FRAME_VECTOR_SIZE).fill(0);
   }
 
-  const sortedHands = [...frame].sort(
-    (a, b) => (a[0]?.x ?? 0) - (b[0]?.x ?? 0),
-  );
-
   const vector: number[] = [];
   for (let i = 0; i < MAX_HANDS; i++) {
-    vector.push(...normalizeHand(sortedHands[i]));
+    vector.push(...normalizeHand(frame[i]));
   }
   return vector;
 }
@@ -163,15 +161,14 @@ export async function getVariantVectorsForDialect(dialect: string) {
     .innerJoin(words, eq(signVariants.signId, words.id))
     .where(eq(signVariants.dialect, dialect));
 
-  const result = variants.map((v) => {
-    const sequence = v.landmarksJson as Sequence;
-    const vectors = sequenceToVectors(sequence);
-    return {
+  const result = variants.flatMap((v) => {
+    const samples = v.landmarksJson as Sequence[];
+    return samples.map((sequence) => ({
       id: v.id,
       word: v.word,
       arabicText: v.arabicText,
-      vectors,
-    };
+      vectors: sequenceToVectors(sequence),
+    }));
   });
 
   if (result.length > 0) {
@@ -181,10 +178,61 @@ export async function getVariantVectorsForDialect(dialect: string) {
   return result;
 }
 
-// find the best matching sign variant for a given input sequence and dialect
+type Neighbor = {
+  word: string;
+  arabicText: string;
+  distance: number;
+};
+
+// find the k nearest variants (by DTW distance) to the input sequence
+async function findKNearestNeighbors(
+  inputVectors: number[][],
+  dialect: string,
+  k: number,
+): Promise<Neighbor[]> {
+  const variants = await getVariantVectorsForDialect(dialect);
+
+  console.log(`📚 عدد الإشارات المخزّنة لهذه اللهجة: ${variants.length}`);
+
+  const distances: Neighbor[] = [];
+
+  for (const variant of variants) {
+    if (variant.vectors.length < 3) {
+      console.log(`  ⏭️ "${variant.word}" تم تجاهلها (أقل من 3 إطارات)`);
+      continue;
+    }
+
+    const distance = dtwDistance(inputVectors, variant.vectors);
+    console.log(`  - "${variant.word}": المسافة = ${distance.toFixed(4)}`);
+
+    distances.push({
+      word: variant.word,
+      arabicText: variant.arabicText,
+      distance,
+    });
+  }
+
+  // sort ascending by distance and keep only the k closest neighbors
+  distances.sort((a, b) => a.distance - b.distance);
+  const neighbors = distances.slice(0, Math.min(k, distances.length));
+
+  console.log(`🔍 أقرب ${neighbors.length} جيران (K=${k}):`);
+  neighbors.forEach((n, idx) =>
+    console.log(
+      `   ${idx + 1}. "${n.word}" - المسافة: ${n.distance.toFixed(4)}`,
+    ),
+  );
+
+  return neighbors;
+}
+
+// find the best matching sign for a given input sequence using a KNN classifier:
+// gathers the k closest variants by DTW distance, then lets them vote
+// (weighted by inverse distance, so closer neighbors count more) on the winning word
 export async function findBestMatch(
   inputSequence: Sequence,
   dialect: string,
+  k: number = DEFAULT_K,
 ): Promise<{
   word: string;
   arabicText: string;
@@ -200,54 +248,88 @@ export async function findBestMatch(
     return null;
   }
 
-  const variants = await getVariantVectorsForDialect(dialect);
+  const neighbors = await findKNearestNeighbors(inputVectors, dialect, k);
 
-  console.log(`📚 عدد الإشارات المخزّنة لهذه اللهجة: ${variants.length}`);
-
-  if (variants.length === 0) {
-    console.log("⚠️ لا توجد إشارات مخزّنة لهذه اللهجة إطلاقًا");
+  if (neighbors.length === 0) {
+    console.log("⚠️ لا توجد إشارات صالحة للمقارنة لهذه اللهجة");
     return null;
   }
 
-  let bestMatch = null;
-  let minDistance = Infinity;
+  // weighted vote: each neighbor votes for its word, weighted by inverse distance
+  // (epsilon avoids division by zero for a near-perfect match)
+  const epsilon = 1e-6;
 
-  for (const variant of variants) {
-    console.log(`  - "${variant.word}": ${variant.vectors.length} إطار`);
-    if (variant.vectors.length < 3) {
-      console.log(`    ⏭️ تم تجاهلها (أقل من 3 إطارات)`);
-      continue;
-    }
+  const votes = new Map<
+    string,
+    { word: string; arabicText: string; weight: number; distances: number[] }
+  >();
 
-    const distance = dtwDistance(inputVectors, variant.vectors);
-    console.log(`    المسافة: ${distance.toFixed(4)}`);
-
-    if (distance < minDistance) {
-      minDistance = distance;
-      bestMatch = variant;
+  for (const neighbor of neighbors) {
+    const weight = 1 / (neighbor.distance + epsilon);
+    const existing = votes.get(neighbor.arabicText);
+    if (existing) {
+      existing.weight += weight;
+      existing.distances.push(neighbor.distance);
+    } else {
+      votes.set(neighbor.arabicText, {
+        word: neighbor.word,
+        arabicText: neighbor.arabicText,
+        weight,
+        distances: [neighbor.distance],
+      });
     }
   }
 
-  if (!bestMatch) {
+  // pick the word with the highest total weighted vote
+  let bestEntry: {
+    word: string;
+    arabicText: string;
+    weight: number;
+    distances: number[];
+  } | null = null;
+  let totalWeight = 0;
+
+  for (const entry of votes.values()) {
+    totalWeight += entry.weight;
+    if (!bestEntry || entry.weight > bestEntry.weight) {
+      bestEntry = entry;
+    }
+  }
+
+  if (!bestEntry) {
     console.log("⚠️ لم يتم إيجاد أي مرشح صالح للمقارنة");
     return null;
   }
 
-  const confidence = Math.exp(-minDistance / 10);
-  const clampedConfidence = Math.min(1, Math.max(0, confidence));
+  // confidence blends how strongly the neighbors agreed (vote share) with how
+  // close the winning neighbors actually were (distance score)
+  const voteShare = bestEntry.weight / totalWeight;
+  const avgDistance =
+    bestEntry.distances.reduce((sum, d) => sum + d, 0) /
+    bestEntry.distances.length;
+  const distanceScore = Math.exp(-avgDistance / 1);
+  const confidence = Math.min(1, Math.max(0, voteShare * distanceScore));
 
   console.log(
-    `✅ أفضل تطابق: "${bestMatch.word}" بمسافة ${minDistance.toFixed(4)}`,
+    `✅ أفضل تطابق (KNN, K=${neighbors.length}): "${bestEntry.word}" (${bestEntry.arabicText}) - متوسط المسافة: ${avgDistance.toFixed(
+      4,
+    )} - نسبة التصويت: ${(voteShare * 100).toFixed(1)}%`,
   );
 
   return {
-    word: bestMatch.word,
-    arabicText: bestMatch.arabicText,
-    confidence: Math.round(clampedConfidence * 100),
-    distance: minDistance,
+    word: bestEntry.word,
+    arabicText: bestEntry.arabicText,
+    confidence: Math.round(confidence * 100),
+    distance: avgDistance,
   };
 }
 
-export function clearTranslationCache() {
-  cache.flushAll();
+export function clearTranslationCache(dialect?: string) {
+  if (dialect) {
+    cache.del(`variants_${dialect}`);
+    console.log(`🗑️ تم مسح كاش اللهجة: ${dialect}`);
+  } else {
+    cache.flushAll();
+    console.log("🗑️ تم مسح كل الكاش");
+  }
 }

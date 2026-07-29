@@ -42,6 +42,7 @@ export interface VideoHandle {
 
 const FRAME_CHANGE_THRESHOLD = 0.015;
 const HEARTBEAT_INTERVAL_MS = 150;
+const TRACK_STALE_MS = 500;
 
 function euclideanDistance(
   a: NormalizedLandmark,
@@ -98,6 +99,67 @@ function frameHasSignificantChange(
   return totalDist / totalPoints > threshold;
 }
 
+interface HandTrack {
+  lastWrist: NormalizedLandmark | null;
+  lastSeenAt: number;
+  leftVotes: number;
+  rightVotes: number;
+}
+
+function freshTracks(): [HandTrack, HandTrack] {
+  return [
+    { lastWrist: null, lastSeenAt: 0, leftVotes: 0, rightVotes: 0 },
+    { lastWrist: null, lastSeenAt: 0, leftVotes: 0, rightVotes: 0 },
+  ];
+}
+
+function wristOf(hand: NormalizedLandmark[]): NormalizedLandmark {
+  return hand[0];
+}
+
+function posDist(a: NormalizedLandmark, b: NormalizedLandmark): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function liveWrist(track: HandTrack, now: number): NormalizedLandmark | null {
+  if (!track.lastWrist) return null;
+  if (now - track.lastSeenAt > TRACK_STALE_MS) return null;
+  return track.lastWrist;
+}
+
+function assignToTracks(
+  detectedHands: NormalizedLandmark[][],
+  tracks: [HandTrack, HandTrack],
+  now: number,
+): [NormalizedLandmark[] | null, NormalizedLandmark[] | null] {
+  if (detectedHands.length === 0) return [null, null];
+
+  const w0 = liveWrist(tracks[0], now);
+  const w1 = liveWrist(tracks[1], now);
+
+  if (detectedHands.length === 1) {
+    const wrist = wristOf(detectedHands[0]);
+    const d0 = w0 ? posDist(wrist, w0) : Infinity;
+    const d1 = w1 ? posDist(wrist, w1) : Infinity;
+    if (d0 === Infinity && d1 === Infinity) {
+      return [detectedHands[0], null];
+    }
+    return d1 < d0 ? [null, detectedHands[0]] : [detectedHands[0], null];
+  }
+
+  const [handA, handB] = detectedHands;
+  const wristA = wristOf(handA);
+  const wristB = wristOf(handB);
+
+  if (w0 && w1) {
+    const costKeep = posDist(wristA, w0) + posDist(wristB, w1);
+    const costSwap = posDist(wristA, w1) + posDist(wristB, w0);
+    return costSwap < costKeep ? [handB, handA] : [handA, handB];
+  }
+
+  return [handA, handB];
+}
+
 const Video = forwardRef<VideoHandle, VideoProps>(
   (
     {
@@ -121,6 +183,14 @@ const Video = forwardRef<VideoHandle, VideoProps>(
 
     const recordedFramesRef = useRef<RecordedFrame[]>([]);
     const isRecordingRef = useRef(false);
+
+    const rawTrackFramesRef = useRef<
+      {
+        timestamp: number;
+        slots: [NormalizedLandmark[] | null, NormalizedLandmark[] | null];
+      }[]
+    >([]);
+    const tracksRef = useRef<[HandTrack, HandTrack]>(freshTracks());
 
     const lastPushedFrameRef = useRef<NormalizedLandmark[][] | null>(null);
     const lastPushedTimestampRef = useRef<number>(0);
@@ -191,8 +261,42 @@ const Video = forwardRef<VideoHandle, VideoProps>(
           isActive
         ) {
           const now = performance.now();
+
+          const [slot0, slot1] = assignToTracks(
+            detections.landmarks,
+            tracksRef.current,
+            now,
+          );
+
+          if (slot0) {
+            tracksRef.current[0].lastWrist = wristOf(slot0);
+            tracksRef.current[0].lastSeenAt = now;
+          }
+          if (slot1) {
+            tracksRef.current[1].lastWrist = wristOf(slot1);
+            tracksRef.current[1].lastSeenAt = now;
+          }
+
+          detections.handedness.forEach((catList, i) => {
+            const hand = detections.landmarks[i];
+            const top = catList[0];
+            if (!top) return;
+            const slotIdx = hand === slot0 ? 0 : hand === slot1 ? 1 : -1;
+            if (slotIdx === -1) return;
+            if (top.categoryName === "Left") {
+              tracksRef.current[slotIdx].leftVotes += top.score;
+            } else if (top.categoryName === "Right") {
+              tracksRef.current[slotIdx].rightVotes += top.score;
+            }
+          });
+
+          const currentSlots: [NormalizedLandmark[], NormalizedLandmark[]] = [
+            slot0 ?? [],
+            slot1 ?? [],
+          ];
+
           const changed = frameHasSignificantChange(
-            landmarks,
+            currentSlots,
             lastPushedFrameRef.current,
             FRAME_CHANGE_THRESHOLD,
           );
@@ -200,10 +304,13 @@ const Video = forwardRef<VideoHandle, VideoProps>(
             now - lastPushedTimestampRef.current >= HEARTBEAT_INTERVAL_MS;
 
           if (changed || heartbeatDue) {
-            const cloned = landmarks.map((hand) => hand.map((p) => ({ ...p })));
-            recordedFramesRef.current.push({
+            const cloned: [NormalizedLandmark[], NormalizedLandmark[]] = [
+              currentSlots[0].map((p) => ({ ...p })),
+              currentSlots[1].map((p) => ({ ...p })),
+            ];
+            rawTrackFramesRef.current.push({
               timestamp: currentTime,
-              landmarks: cloned,
+              slots: cloned,
             });
             lastPushedFrameRef.current = cloned;
             lastPushedTimestampRef.current = now;
@@ -305,11 +412,25 @@ const Video = forwardRef<VideoHandle, VideoProps>(
       startRecording() {
         isRecordingRef.current = true;
         recordedFramesRef.current = [];
+        rawTrackFramesRef.current = [];
         lastPushedFrameRef.current = null;
         lastPushedTimestampRef.current = 0;
+        tracksRef.current = freshTracks();
       },
       stopRecording() {
         isRecordingRef.current = false;
+
+        const [track0, track1] = tracksRef.current;
+        const track0IsLeft =
+          track0.leftVotes + track1.rightVotes >=
+          track0.rightVotes + track1.leftVotes;
+
+        recordedFramesRef.current = rawTrackFramesRef.current.map((f) => ({
+          timestamp: f.timestamp,
+          landmarks: track0IsLeft
+            ? [f.slots[0] ?? [], f.slots[1] ?? []]
+            : [f.slots[1] ?? [], f.slots[0] ?? []],
+        }));
       },
       getRecordedFrames() {
         return recordedFramesRef.current;

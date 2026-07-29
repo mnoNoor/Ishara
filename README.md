@@ -1,116 +1,259 @@
-# Ishara (إشارة)
+﻿# Ishara
 
-A full-stack app for recording and translating Arabic Sign Language — with real dialect support (Saudi, Egyptian, Lebanese, Iraqi, Gulf), since signs aren't the same across the Arab world.
+<p align="center">
+  <b>Arabic Sign Language Recognition & Translation Platform</b>
+</p>
 
-The camera captures hand movement via MediaPipe, which is either **recorded** as a reference sample or **translated** by matching it against stored samples using sequence comparison.
+<p align="center">
+A full-stack platform for capturing, storing, and translating Arabic sign language gestures using browser-based hand tracking and gesture recognition algorithms.
+</p>
 
-## How it works
+---
 
-1. MediaPipe tracks 21 3D hand landmarks per hand, client-side, in real time.
-2. Landmarks are normalized (relative to wrist position and hand size) so distance from the camera or hand placement doesn't affect matching.
-3. Frames are filtered client-side: near-duplicate frames are skipped to cut payload size, but a heartbeat guarantees a frame is still saved periodically — important for static signs (like fingerspelling) where the hand doesn't move.
-4. The backend compares the incoming sequence against stored reference sequences for the selected dialect using **Dynamic Time Warping (DTW)**, with Sakoe-Chiba banding for speed and path-length normalization for fair scoring across sequences of different lengths.
-5. The best match is returned with a confidence score.
+## 🌍 Overview
 
-## Features
+Ishara is an accessibility-focused platform designed to help bridge communication gaps by providing a foundation for Arabic sign language recognition.
 
-- 📹 Real-time in-browser hand tracking with skeleton overlay, no server-side video processing
-- 🗂️ Dialect-aware storage — the same word can have distinct variants per dialect
-- 🔤 Auto Arabic-to-Latin transliteration for consistent internal word IDs
-- 🔍 DTW-based sign-to-text matching, normalized for fair comparison regardless of sequence length
-- 🧹 Client-side frame deduplication + heartbeat sampling, for lower bandwidth without losing static signs
-- ⚡ Sakoe-Chiba banding on DTW to keep matching fast as the reference library grows
-- 🚀 Single-server deployment — the backend serves the built frontend directly in production
+The project focuses on building a scalable system for:
 
-## Tech Stack
+- Collecting Arabic sign language gesture data.
+- Storing structured gesture samples.
+- Translating hand movements into Arabic text.
+- Supporting future research and machine learning approaches.
 
-**Frontend:** React, TypeScript, Vite, TanStack Query, React Router, Tailwind CSS, MediaPipe Tasks Vision
+---
 
-**Backend:** Express 5, TypeScript, Drizzle ORM, PostgreSQL, Zod, Helmet
+## ✨ Features
 
-**Infra:** Docker Compose (PostgreSQL)
+- Real-time hand tracking using MediaPipe.
+- 3D hand landmark extraction from webcam input.
+- Arabic sign recording and dataset management.
+- Gesture-to-text translation.
+- Dialect-aware sign storage.
+- Admin tools for adding new samples.
+- Confidence-based translation results.
+- PostgreSQL-powered data storage.
 
-## Project Structure
+---
+
+## 🧠 How It Works
+
+Ishara converts hand movements into numerical landmark sequences.
+
+Each hand is represented using:
 
 ```
-ishara/
-├── client/                  # React frontend
-│   └── src/components/video/
-│       ├── Video.tsx        # Camera + MediaPipe hand tracking
-│       ├── SignRecorder.tsx # Record new reference signs
-│       └── Translate.tsx    # Live sign-to-text translation
-├── server/                  # Express API
-│   └── src/
-│       ├── controllers/     # Recording + translation logic
-│       ├── services/        # Landmark normalization + DTW matching
-│       ├── routes/
-│       ├── validation/      # Zod schemas
-│       └── db/              # Drizzle schema + client
-├── docker-compose.yml        # Local PostgreSQL
-└── package.json              # Root build/start orchestration
+21 landmarks × 3 coordinates (x, y, z)
+
+= 63 values per hand
 ```
 
-## Getting Started
+The translation pipeline:
 
-### Prerequisites
+```
+Camera
+  ↓
+MediaPipe Hand Tracking
+  ↓
+3D Landmark Extraction
+  ↓
+Gesture Sequence
+  ↓
+DTW Similarity Matching
+  ↓
+KNN Classification
+  ↓
+Arabic Text Output
+```
 
-- Node.js 20+
-- Docker (for local PostgreSQL)
+---
 
-### Setup
+## 🤖 Recognition Approach
+
+The current version uses a lightweight and explainable approach:
+
+### Dynamic Time Warping (DTW)
+
+Used to compare gesture sequences while handling differences in movement speed between users.
+
+### K-Nearest Neighbors (KNN)
+
+Used to classify gestures based on the closest stored examples.
+
+This approach allows Ishara to expand its dataset without requiring model retraining after every new sample.
+
+Future versions may explore deep learning models such as LSTM and Transformers when larger datasets become available.
+
+---
+
+## 🏗️ Architecture
+
+```
+React + Vite Client
+
+        │
+
+Express + TypeScript API
+
+        │
+
+Translation Service
+
+        │
+
+DTW + KNN Engine
+
+        │
+
+PostgreSQL Database
+```
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+
+- React
+- Vite
+- TypeScript
+- Tailwind CSS
+- React Router
+- MediaPipe Tasks Vision
+
+### Backend
+
+- Node.js
+- Express
+- TypeScript
+- Drizzle ORM
+- PostgreSQL
+- Zod
+- Helmet
+
+### Development
+
+- Docker
+- npm
+
+---
+
+## 🗄️ Data Model
+
+Ishara stores:
+
+### Signs
+
+General information about each sign:
+
+- Arabic text
+- Category
+- Difficulty
+- Internal identifier
+
+### Sign Variants
+
+Gesture samples for different variations:
+
+- Dialect
+- Landmark sequences
+- Media references
+- Sample count
+
+---
+
+## 📊 Dataset Growth
+
+The project is currently focused on creating a reliable foundation before large-scale expansion.
+
+Future dataset growth will include:
+
+- More Arabic signs.
+- More users and contributors.
+- Quality verification systems.
+- User feedback collection.
+- Improved filtering against incorrect samples.
+
+---
+
+## 🚀 Roadmap
+
+### Current
+
+✅ Webcam hand tracking
+✅ Gesture recording
+✅ PostgreSQL storage
+✅ DTW + KNN translation engine
+
+### Next
+
+- Real-time continuous translation.
+- Improved user experience.
+- Authentication and protected admin tools.
+- Translation feedback system.
+- Dataset review workflow.
+
+### Future
+
+- Larger Arabic sign language dataset.
+- LSTM / Transformer-based recognition.
+- Mobile applications.
+- Research-oriented experiments.
+
+---
+
+## 🔬 Research Potential
+
+Ishara can serve as a foundation for research in:
+
+- Arabic sign language recognition.
+- Human-computer interaction.
+- Accessibility technologies.
+- Gesture recognition algorithms.
+- Machine learning approaches for sign translation.
+
+The current system provides a transparent baseline that can later be compared with neural network-based solutions.
+
+---
+
+## ⚙️ Running Locally
+
+Requirements:
+
+- Node.js
+- npm
+- Docker
+
+Start PostgreSQL:
 
 ```bash
-git clone <repository-url>
-cd ishara
-npm run build          # installs + builds client and server
-docker compose up -d   # starts PostgreSQL
+docker-compose up -d
 ```
 
-**`server/.env`**
-
-```env
-DATABASE_URL=postgres://ishara:ishara@localhost:5432/ishara
-PORT=3000
-NODE_ENV=development
-CORS_ORIGIN=http://localhost:5173
-```
-
-**`client/.env`**
-
-```env
-VITE_API_URL=http://localhost:3000
-```
-
-Run migrations:
+Install dependencies:
 
 ```bash
-cd server && npm run migrate && cd ..
+npm install --prefix client
+npm install --prefix server
 ```
 
-### Development (two processes)
+Run development servers:
 
 ```bash
-npm run dev:server   # API on http://localhost:3000
-npm run dev:client   # Vite dev server on http://localhost:5173
+npm run dev:client
+npm run dev:server
 ```
 
-### Production (single process)
+---
 
-```bash
-npm run build
-npm start
-```
+## 📄 License
 
-In production the Express server serves the built frontend directly, so only one process and port are needed.
+This project is licensed under the Apache License 2.0.
 
-## Known Limitations
+---
 
-- No authentication on admin routes
-- Matching accuracy improves with more reference samples per dialect — currently a DTW baseline, not a trained model
-- Fixed-duration capture in the translation UI, no automatic motion-based segmentation
-- No rate limiting on the translation endpoint
-- No automated tests
+## 👤 Author
 
-## License
+**mnoNoor**
 
-ISC
+Building technology for accessibility and Arabic sign language understanding.

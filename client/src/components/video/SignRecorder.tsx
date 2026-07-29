@@ -82,7 +82,6 @@ export default function SignRecorder() {
       }
 
       setMessage({ text: "تم حفظ الإشارة بنجاح ✅", type: "success" });
-      setArabicText("");
       setFrameCount(0);
     } catch (error: any) {
       console.error(error);

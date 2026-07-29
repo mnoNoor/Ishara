@@ -1,6 +1,6 @@
 {
-  "id": "fefea0ac-9edb-454e-a04e-367a7b632d45",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "22bc660b-3fdf-4549-b657-51fa380110a8",
+  "prevId": "fefea0ac-9edb-454e-a04e-367a7b632d45",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -131,11 +131,11 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "word_word_unique": {
-          "name": "word_word_unique",
+        "word_arabic_text_unique": {
+          "name": "word_arabic_text_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "word"
+            "arabic_text"
           ]
         }
       },

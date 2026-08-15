@@ -1,7 +1,14 @@
 import { useRef, useState } from "react";
 import Video, { type VideoHandle } from "./Video";
 
-const DIALECTS = ["سعودي", "مصري", "لبناني", "عراقي", "خليجي"] as const;
+const DIALECTS = [
+  "سورية",
+  "سعودي",
+  "مصري",
+  "لبناني",
+  "عراقي",
+  "خليجي",
+] as const;
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -15,11 +22,12 @@ interface TranslationResult {
 
 export default function Translate() {
   const videoRef = useRef<VideoHandle>(null);
-  const [dialect, setDialect] = useState<(typeof DIALECTS)[number]>("سعودي");
+  const [dialect, setDialect] = useState<(typeof DIALECTS)[number]>("سوري");
   const [isCapturing, setIsCapturing] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [result, setResult] = useState<TranslationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<TranslationResult[]>([]);
 
   const handleCapture = () => {
     setError(null);
@@ -61,6 +69,7 @@ export default function Translate() {
       }
 
       setResult(data);
+      setHistory((h) => [data, ...h]);
     } catch (err: any) {
       console.error(err);
       setError(err.message || "حدث خطأ أثناء الترجمة");
@@ -87,23 +96,7 @@ export default function Translate() {
         )}
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          اللهجة
-        </label>
-        <select
-          value={dialect}
-          onChange={(e) => setDialect(e.target.value as typeof dialect)}
-          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100"
-          disabled={isCapturing || isTranslating}
-        >
-          {DIALECTS.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* اللهجة مخفية افتراضياً (سورية) */}
 
       <div className="flex justify-center">
         <button
@@ -131,6 +124,38 @@ export default function Translate() {
           </p>
         </div>
       )}
+
+      <div className="p-4 rounded-lg border border-gray-200 bg-white space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-700">
+            سجل الكلمات المترجمة
+          </h3>
+          <button
+            onClick={() => setHistory([])}
+            disabled={history.length === 0}
+            className="text-xs text-red-600 hover:underline disabled:opacity-50"
+          >
+            تفريغ السجل
+          </button>
+        </div>
+
+        {history.length === 0 ? (
+          <p className="text-xs text-gray-500">لا توجد كلمات مترجمة بعد.</p>
+        ) : (
+          <ul className="space-y-2 text-right">
+            {history.map((h, idx) => (
+              <li key={idx} className="text-sm text-gray-700">
+                <span className="font-semibold">{h.arabicText}</span>
+                <span className="text-gray-500"> — ({h.word})</span>
+                <span className="text-xs text-emerald-600">
+                  {" "}
+                  • {h.confidence}%
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

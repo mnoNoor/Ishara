@@ -2,7 +2,14 @@ import { useRef, useState } from "react";
 import Video, { type VideoHandle } from "./Video";
 import { transliterate } from "transliteration";
 
-const DIALECTS = ["سعودي", "مصري", "لبناني", "عراقي", "خليجي"] as const;
+const DIALECTS = [
+  "سورية",
+  "سعودي",
+  "مصري",
+  "لبناني",
+  "عراقي",
+  "خليجي",
+] as const;
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -11,7 +18,7 @@ export default function SignRecorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const [arabicText, setArabicText] = useState("");
-  const [dialect, setDialect] = useState<(typeof DIALECTS)[number]>("سعودي");
+  const [dialect, setDialect] = useState<(typeof DIALECTS)[number]>("سورية");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
     text: string;
@@ -150,23 +157,7 @@ export default function SignRecorder() {
           </p>
         </div>
 
-        <div className="sm:col-span-2">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            اللهجة
-          </label>
-          <select
-            value={dialect}
-            onChange={(e) => setDialect(e.target.value as typeof dialect)}
-            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100"
-            disabled={saving}
-          >
-            {DIALECTS.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* اللهجة مخفية افتراضياً (سورية) */}
       </div>
 
       <div className="flex gap-3 justify-center flex-wrap">

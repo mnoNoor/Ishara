@@ -22,7 +22,7 @@ interface TranslationResult {
 
 export default function Translate() {
   const videoRef = useRef<VideoHandle>(null);
-  const [dialect, setDialect] = useState<(typeof DIALECTS)[number]>("سورية");
+  const [dialect] = useState<(typeof DIALECTS)[number]>("سورية");
   const [isCapturing, setIsCapturing] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [result, setResult] = useState<TranslationResult | null>(null);

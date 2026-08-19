@@ -16,7 +16,6 @@
   "license": "Apache-2.0",
   "type": "module",
   "dependencies": {
-    "better-auth": "^1.6.20",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -24,6 +23,7 @@
     "drizzle-zod": "^0.8.3",
     "express": "^5.2.1",
     "helmet": "^8.2.0",
+    "jsonwebtoken": "^9.0.3",
     "morgan": "^1.11.0",
     "node-cache": "^5.1.2",
     "postgres": "^3.4.9",
@@ -34,6 +34,7 @@
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/node": "^26.0.1",
     "@types/node-cache": "^4.1.3",

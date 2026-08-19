@@ -1,27 +1,19 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { RegisterCredentials } from "../types/auth.types";
+import type { LoginCredentials } from "../types/auth.types";
 
-const Register: React.FC = () => {
+const Login: React.FC = () => {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState<RegisterCredentials>({
-    name: "",
+  const [formData, setFormData] = useState<LoginCredentials>({
     email: "",
     password: "",
-    confirmPassword: "",
   });
-  const [errors, setErrors] = useState<Partial<RegisterCredentials>>({});
+  const [errors, setErrors] = useState<Partial<LoginCredentials>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const validate = (): boolean => {
-    const newErrors: Partial<RegisterCredentials> = {};
-
-    if (!formData.name.trim()) {
-      newErrors.name = "الاسم مطلوب";
-    } else if (formData.name.length < 3) {
-      newErrors.name = "الاسم يجب أن يكون 3 أحرف على الأقل";
-    }
+    const newErrors: Partial<LoginCredentials> = {};
 
     if (!formData.email) {
       newErrors.email = "البريد الإلكتروني مطلوب";
@@ -33,10 +25,6 @@ const Register: React.FC = () => {
       newErrors.password = "كلمة المرور مطلوبة";
     } else if (formData.password.length < 6) {
       newErrors.password = "كلمة المرور يجب أن تكون 6 أحرف على الأقل";
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = "كلمة المرور غير متطابقة";
     }
 
     setErrors(newErrors);
@@ -56,54 +44,32 @@ const Register: React.FC = () => {
       localStorage.setItem("token", "fake-jwt-token");
       localStorage.setItem(
         "user",
-        JSON.stringify({ id: "1", name: formData.name, email: formData.email }),
+        JSON.stringify({ id: "1", name: "أحمد", email: formData.email }),
       );
 
       navigate("/dashboard");
     } catch (error) {
-      setApiError("فشل التسجيل. يرجى المحاولة مرة أخرى.");
+      setApiError("فشل تسجيل الدخول. تحقق من بياناتك.");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 transition-all duration-300 hover:shadow-3xl">
+        {/* الشعار */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">إنشاء حساب</h1>
-          <p className="text-gray-500 mt-2">أنشئ حسابك الجديد مجاناً</p>
+          <h1 className="text-3xl font-bold text-gray-800">مرحباً بك</h1>
+          <p className="text-gray-500 mt-2">سجل الدخول إلى حسابك</p>
         </div>
-
+        د{" "}
         {apiError && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
             {apiError}
           </div>
         )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              الاسم الكامل
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-all ${
-                errors.name
-                  ? "border-red-500 focus:ring-red-200"
-                  : "border-gray-300 focus:ring-blue-200 focus:border-blue-500"
-              }`}
-              placeholder="أحمد محمد"
-            />
-            {errors.name && (
-              <p className="mt-1 text-sm text-red-600">{errors.name}</p>
-            )}
-          </div>
-
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               البريد الإلكتروني
@@ -150,31 +116,6 @@ const Register: React.FC = () => {
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              تأكيد كلمة المرور
-            </label>
-            <input
-              type="password"
-              value={formData.confirmPassword}
-              onChange={(e) =>
-                setFormData({ ...formData, confirmPassword: e.target.value })
-              }
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-all ${
-                errors.confirmPassword
-                  ? "border-red-500 focus:ring-red-200"
-                  : "border-gray-300 focus:ring-blue-200 focus:border-blue-500"
-              }`}
-              placeholder="••••••••"
-              dir="ltr"
-            />
-            {errors.confirmPassword && (
-              <p className="mt-1 text-sm text-red-600">
-                {errors.confirmPassword}
-              </p>
-            )}
-          </div>
-
           <button
             type="submit"
             disabled={isLoading}
@@ -202,18 +143,18 @@ const Register: React.FC = () => {
                 ></path>
               </svg>
             ) : (
-              "إنشاء حساب"
+              "تسجيل الدخول"
             )}
           </button>
         </form>
-
+        \{" "}
         <p className="text-center text-gray-600 mt-6">
-          لديك حساب بالفعل؟{" "}
+          ليس لديك حساب؟{" "}
           <Link
-            to="/login"
+            to="/register"
             className="text-blue-600 hover:text-blue-800 font-medium transition-colors"
           >
-            سجل الدخول
+            سجل الآن
           </Link>
         </p>
       </div>
@@ -221,4 +162,4 @@ const Register: React.FC = () => {
   );
 };
 
-export default Register;
+export default Login;

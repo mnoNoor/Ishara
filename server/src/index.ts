@@ -4,6 +4,9 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import path from "path";
+import cookieParser from "cookie-parser";
+
+import authRoutes from "./routes/authRouter";
 import adminRoutes from "./routes/adminRouter";
 import translateRoutes from "./routes/translateRouter";
 import dictionaryRoutes from "./routes/dictionaryRoutes";
@@ -36,21 +39,15 @@ app.use(
   }),
 );
 
+app.use(cookieParser());
 app.use(morgan("dev"));
 app.use(express.json({ limit: "5mb" }));
 
 if (process.env.NODE_ENV === "development") {
   app.use(cors({ origin: process.env.CORS_ORIGIN || "http://localhost:5173" }));
 }
-console.log(
-  "Translate routes loaded:",
-  translateRoutes.stack.map((r) => r.route?.path),
-);
-console.log(
-  "Admin routes loaded:",
-  adminRoutes.stack.map((r) => r.route?.path),
-);
 
+app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/translate", translateRoutes);
 app.use("/api/dictionary", dictionaryRoutes);

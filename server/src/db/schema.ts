@@ -62,7 +62,7 @@ export const user = pgTable("user", {
   name: varchar("name", { length: 40 }).notNull(),
   email: varchar("email", { length: 80 }).notNull().unique(),
   password: text("password").notNull(),
-  profileImage: jsonb("profile_image").default([]),
+  profileImage: text("profile_image").default(""),
   role: userRoleEnum("role").notNull().default("user"),
   dominantHand: dominantHandEnum("dominant_hand"),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow(),

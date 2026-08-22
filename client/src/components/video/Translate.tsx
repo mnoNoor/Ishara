@@ -41,7 +41,9 @@ export default function Translate() {
 
       const frames = videoRef.current?.getRecordedFrames();
       if (!frames || frames.length === 0) {
-        setError("لم يتم رصد أي حركة يد. حاول مرة أخرى بالقرب من الكاميرا.");
+        setError(
+          "No hand movements detected. Please try again near the camera.",
+        );
         return;
       }
 
@@ -56,7 +58,7 @@ export default function Translate() {
   ) => {
     setIsTranslating(true);
     try {
-      const response = await fetch(`${API_BASE}/api/translate/sign-to-text`, {
+      const response = await fetch(`${API_BASE}/translate/sign-to-text`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dialect, landmarksJson }),
@@ -65,14 +67,14 @@ export default function Translate() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "فشل في الترجمة");
+        throw new Error(data.message || "failed to translate");
       }
 
       setResult(data);
       setHistory((h) => [data, ...h]);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "حدث خطأ أثناء الترجمة");
+      setError(err.message || "unknown error occurred during translation");
     } finally {
       setIsTranslating(false);
     }

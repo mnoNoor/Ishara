@@ -18,7 +18,7 @@ export default function SignRecorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [frameCount, setFrameCount] = useState(0);
   const [arabicText, setArabicText] = useState("");
-  const [dialect, setDialect] = useState<(typeof DIALECTS)[number]>("سورية");
+  const [dialect] = useState<(typeof DIALECTS)[number]>("سورية");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
     text: string;
@@ -77,7 +77,7 @@ export default function SignRecorder() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE}/api/admin/signs/record`, {
+      const response = await fetch(`${API_BASE}/admin/signs/record`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

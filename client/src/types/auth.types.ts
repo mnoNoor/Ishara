@@ -8,19 +8,23 @@ export interface RegisterCredentials {
   email: string;
   password: string;
   confirmPassword: string;
+  dominantHand: DominantHand | "";
 }
+
+export type UserRole = "admin" | "teacher" | "user";
+export type DominantHand = "right" | "left";
 
 export interface User {
   id: string;
   name: string;
   email: string;
+  role: UserRole;
+  dominantHand?: DominantHand | null;
+  profileImage?: string | null;
 }
 
-export interface AuthContextType {
-  user: User | null;
-  login: (credentials: LoginCredentials) => Promise<void>;
-  register: (credentials: RegisterCredentials) => Promise<void>;
-  logout: () => void;
-  isLoading: boolean;
-  error: string | null;
+export interface AuthResponse {
+  success: boolean;
+  message: string;
+  user?: User;
 }

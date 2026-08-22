@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./layout/Layout";
 import SignRecorder from "./components/video/SignRecorder";
 import Translate from "./components/video/Translate";
+import { useAuth, AuthProvider } from "./context/AuthContext";
 
 import Home from "./pages/Home";
 import About from "./pages/About";
@@ -13,37 +14,46 @@ import Login from "./pages/Login";
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const token = localStorage.getItem("token");
-  if (!token) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <div>جاري التحميل...</div>;
+  }
+
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
+
   return <>{children}</>;
 };
 
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Home />} />
-          <Route path="about" element={<About />} />
-          <Route path="contact" element={<Contact />} />
-          <Route path="translate" element={<Translate />} />
-          <Route path="dictionary" element={<Dictionary />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route
-            path="sign-recorder"
-            element={
-              <ProtectedRoute>
-                <SignRecorder />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Home />} />
+            <Route path="about" element={<About />} />
+            <Route path="contact" element={<Contact />} />
+            <Route path="translate" element={<Translate />} />
+            <Route path="dictionary" element={<Dictionary />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route
+              path="sign-recorder"
+              element={
+                <ProtectedRoute>
+                  <SignRecorder />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 }
+
 export default App;

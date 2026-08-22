@@ -1,21 +1,26 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import type { RegisterCredentials } from "../types/auth.types";
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
+  const { register } = useAuth();
   const [formData, setFormData] = useState<RegisterCredentials>({
     name: "",
     email: "",
     password: "",
     confirmPassword: "",
+    dominantHand: "",
   });
-  const [errors, setErrors] = useState<Partial<RegisterCredentials>>({});
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof RegisterCredentials, string>>
+  >({});
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const validate = (): boolean => {
-    const newErrors: Partial<RegisterCredentials> = {};
+    const newErrors: Partial<Record<keyof RegisterCredentials, string>> = {};
 
     if (!formData.name.trim()) {
       newErrors.name = "الاسم مطلوب";
@@ -39,6 +44,10 @@ const Register: React.FC = () => {
       newErrors.confirmPassword = "كلمة المرور غير متطابقة";
     }
 
+    if (!formData.dominantHand) {
+      newErrors.dominantHand = "يرجى اختيار اليد المسيطرة";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -51,17 +60,14 @@ const Register: React.FC = () => {
     setApiError(null);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      localStorage.setItem("token", "fake-jwt-token");
-      localStorage.setItem(
-        "user",
-        JSON.stringify({ id: "1", name: formData.name, email: formData.email }),
-      );
-
+      await register(formData);
       navigate("/dashboard");
     } catch (error) {
-      setApiError("فشل التسجيل. يرجى المحاولة مرة أخرى.");
+      setApiError(
+        error instanceof Error
+          ? error.message
+          : "فشل التسجيل. يرجى المحاولة مرة أخرى.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -172,6 +178,43 @@ const Register: React.FC = () => {
               <p className="mt-1 text-sm text-red-600">
                 {errors.confirmPassword}
               </p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              ما هي يدك المسيطرة؟
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setFormData({ ...formData, dominantHand: "right" })
+                }
+                className={`py-2.5 rounded-lg border font-medium transition-all ${
+                  formData.dominantHand === "right"
+                    ? "bg-blue-600 border-blue-600 text-white"
+                    : "bg-white border-gray-300 text-gray-700 hover:border-blue-400"
+                }`}
+              >
+                اليد اليمنى
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setFormData({ ...formData, dominantHand: "left" })
+                }
+                className={`py-2.5 rounded-lg border font-medium transition-all ${
+                  formData.dominantHand === "left"
+                    ? "bg-blue-600 border-blue-600 text-white"
+                    : "bg-white border-gray-300 text-gray-700 hover:border-blue-400"
+                }`}
+              >
+                اليد اليسرى
+              </button>
+            </div>
+            {errors.dominantHand && (
+              <p className="mt-1 text-sm text-red-600">{errors.dominantHand}</p>
             )}
           </div>
 

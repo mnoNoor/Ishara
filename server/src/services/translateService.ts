@@ -67,7 +67,9 @@ export function sequenceToVectors(sequence: Sequence): number[][] {
 // compute Euclidean distance between two vectors
 export function euclideanDistance(v1: number[], v2: number[]): number {
   if (v1.length !== v2.length) {
-    throw new Error("المتجهان يجب أن يكونا بنفس الطول");
+    throw new Error(
+      "Vectors must be of the same length for Euclidean distance calculation",
+    );
   }
   let sum = 0;
   for (let i = 0; i < v1.length; i++) {
@@ -192,18 +194,16 @@ async function findKNearestNeighbors(
 ): Promise<Neighbor[]> {
   const variants = await getVariantVectorsForDialect(dialect);
 
-  console.log(`📚 عدد الإشارات المخزّنة لهذه اللهجة: ${variants.length}`);
-
   const distances: Neighbor[] = [];
 
   for (const variant of variants) {
     if (variant.vectors.length < 3) {
-      console.log(`  ⏭️ "${variant.word}" تم تجاهلها (أقل من 3 إطارات)`);
+      console.log(`  ⏭️ "${variant.word}" skipped (less than 3 frames)`);
       continue;
     }
 
     const distance = dtwDistance(inputVectors, variant.vectors);
-    console.log(`  - "${variant.word}": المسافة = ${distance.toFixed(4)}`);
+    console.log(`  - "${variant.word}": distance = ${distance.toFixed(4)}`);
 
     distances.push({
       word: variant.word,
@@ -216,10 +216,10 @@ async function findKNearestNeighbors(
   distances.sort((a, b) => a.distance - b.distance);
   const neighbors = distances.slice(0, Math.min(k, distances.length));
 
-  console.log(`🔍 أقرب ${neighbors.length} جيران (K=${k}):`);
+  console.log(`🔍 Nearest ${neighbors.length} neighbors (K=${k}):`);
   neighbors.forEach((n, idx) =>
     console.log(
-      `   ${idx + 1}. "${n.word}" - المسافة: ${n.distance.toFixed(4)}`,
+      `   ${idx + 1}. "${n.word}" - distance: ${n.distance.toFixed(4)}`,
     ),
   );
 
@@ -241,17 +241,17 @@ export async function findBestMatch(
 } | null> {
   const inputVectors = sequenceToVectors(inputSequence);
 
-  console.log(`📏 عدد إطارات المدخل: ${inputVectors.length}`);
+  console.log(`📏 Number of input frames: ${inputVectors.length}`);
 
   if (inputVectors.length === 0) {
-    console.log("⚠️ لا توجد إطارات بالمدخل");
+    console.log("⚠️ No input frames found");
     return null;
   }
 
   const neighbors = await findKNearestNeighbors(inputVectors, dialect, k);
 
   if (neighbors.length === 0) {
-    console.log("⚠️ لا توجد إشارات صالحة للمقارنة لهذه اللهجة");
+    console.log("⚠️ No valid signs to compare for this dialect");
     return null;
   }
 
@@ -297,7 +297,7 @@ export async function findBestMatch(
   }
 
   if (!bestEntry) {
-    console.log("⚠️ لم يتم إيجاد أي مرشح صالح للمقارنة");
+    console.log("⚠️ No valid candidate found for comparison");
     return null;
   }
 
@@ -311,9 +311,9 @@ export async function findBestMatch(
   const confidence = Math.min(1, Math.max(0, voteShare * distanceScore));
 
   console.log(
-    `✅ أفضل تطابق (KNN, K=${neighbors.length}): "${bestEntry.word}" (${bestEntry.arabicText}) - متوسط المسافة: ${avgDistance.toFixed(
+    `✅ Best match (KNN, K=${neighbors.length}): "${bestEntry.word}" (${bestEntry.arabicText}) - avg distance: ${avgDistance.toFixed(
       4,
-    )} - نسبة التصويت: ${(voteShare * 100).toFixed(1)}%`,
+    )} - vote share: ${(voteShare * 100).toFixed(1)}%`,
   );
 
   return {
@@ -327,9 +327,9 @@ export async function findBestMatch(
 export function clearTranslationCache(dialect?: string) {
   if (dialect) {
     cache.del(`variants_${dialect}`);
-    console.log(`🗑️ تم مسح كاش اللهجة: ${dialect}`);
+    console.log(`🗑️ Cleared cache for dialect: ${dialect}`);
   } else {
     cache.flushAll();
-    console.log("🗑️ تم مسح كل الكاش");
+    console.log("🗑️ Cleared all cache");
   }
 }

@@ -1,21 +1,12 @@
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function Header() {
-  const location = useLocation();
   const navigate = useNavigate();
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem("token"),
-  );
+  const { user, logout } = useAuth();
 
-  useEffect(() => {
-    setToken(localStorage.getItem("token"));
-  }, [location.pathname]);
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setToken(null);
+  const handleLogout = async () => {
+    await logout();
     navigate("/login");
   };
 
@@ -36,7 +27,7 @@ export default function Header() {
                   الرئيسية
                 </NavLink>
               </li>
-              {token && (
+              {user && (user.role === "admin" || user.role === "teacher") && (
                 <li>
                   <NavLink to="/sign-recorder" className="nav-link">
                     تسجيل إشارة
@@ -62,7 +53,7 @@ export default function Header() {
           </div>
 
           <div className="flex items-center space-x-4">
-            {!token ? (
+            {!user ? (
               <>
                 <Link
                   to="/login"
@@ -79,10 +70,7 @@ export default function Header() {
               </>
             ) : (
               <>
-                <span className="text-gray-700 text-sm">
-                  {JSON.parse(localStorage.getItem("user") || "{}").name ||
-                    "مستخدم"}
-                </span>
+                <span className="text-gray-700 text-sm">{user.name}</span>
                 <button
                   onClick={handleLogout}
                   className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"

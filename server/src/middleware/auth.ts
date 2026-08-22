@@ -15,7 +15,7 @@ export const authMiddleware = (
   if (!token) {
     res.status(401).json({
       success: false,
-      message: "غير مصرح - يرجى تسجيل الدخول",
+      message: "unauthorized - no token provided",
     });
     return;
   }
@@ -24,7 +24,7 @@ export const authMiddleware = (
   if (!payload) {
     res.status(401).json({
       success: false,
-      message: "غير مصرح - توكن غير صالح",
+      message: "unauthorized - invalid token",
     });
     return;
   }
@@ -38,7 +38,7 @@ export const roleMiddleware = (allowedRoles: string[]) => {
     if (!req.user) {
       res.status(401).json({
         success: false,
-        message: "غير مصرح",
+        message: "unauthorized - user not authenticated",
       });
       return;
     }
@@ -46,7 +46,7 @@ export const roleMiddleware = (allowedRoles: string[]) => {
     if (!allowedRoles.includes(req.user.role)) {
       res.status(403).json({
         success: false,
-        message: "صلاحيات غير كافية",
+        message: "unauthorized - insufficient permissions for this action",
       });
       return;
     }

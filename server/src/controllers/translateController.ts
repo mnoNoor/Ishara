@@ -28,7 +28,7 @@ export async function signToText(req: Request, res: Response) {
       landmarksJson.length === 0
     ) {
       return res.status(400).json({
-        message: "يجب إرسال إطارات الإشارة (landmarksJson) كمصفوفة غير فارغة",
+        message: "landmarks should be a non-empty array of frames",
       });
     }
 
@@ -36,7 +36,7 @@ export async function signToText(req: Request, res: Response) {
 
     if (!result) {
       return res.status(404).json({
-        message: "لم يتم العثور على إشارة مطابقة لهذه اللهجة",
+        message: "No matching sign found for the specified dialect",
       });
     }
 
@@ -46,10 +46,10 @@ export async function signToText(req: Request, res: Response) {
       confidence: result.confidence,
     });
   } catch (error) {
-    console.error("خطأ في ترجمة الإشارة إلى نص:", error);
+    console.error("Error translating sign to text:", error);
     return res.status(500).json({
-      message: "حدث خطأ داخلي أثناء الترجمة",
-      error: error instanceof Error ? error.message : "خطأ غير معروف",
+      message: "Internal server error occurred during translation",
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -58,11 +58,11 @@ export async function clearCache(req: Request, res: Response) {
   try {
     clearTranslationCache();
     return res.status(200).json({
-      message: "تم مسح الكاش المؤقت بنجاح",
+      message: "Cache cleared successfully",
     });
   } catch (error) {
     return res.status(500).json({
-      message: "فشل في مسح الكاش",
+      message: "Failed to clear the cache",
     });
   }
 }

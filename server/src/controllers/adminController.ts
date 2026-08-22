@@ -85,12 +85,12 @@ export async function recordSign(req: Request, res: Response) {
     clearTranslationCache(dialect);
 
     res.status(201).json({
-      message: "تم حفظ الإشارة بنجاح",
+      message: "sign recorded successfully",
     });
   } catch (error) {
-    console.error("خطأ في حفظ الإشارة:", error);
+    console.error("Error saving sign:", error);
     res.status(500).json({
-      message: "حدث خطأ داخلي في الخادم",
+      message: "internal server error",
     });
   }
 }

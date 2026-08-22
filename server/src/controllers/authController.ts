@@ -19,7 +19,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     if (password !== confirmPassword) {
       res.status(400).json({
         success: false,
-        message: "كلمة المرور غير متطابقة",
+        message: "passwords do not match",
       });
       return;
     }
@@ -31,7 +31,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     if (existingUser) {
       res.status(400).json({
         success: false,
-        message: "البريد الإلكتروني مستخدم بالفعل",
+        message: "email already in use",
       });
       return;
     }
@@ -63,11 +63,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       userId: createdUser.id,
       role: createdUser.role as "admin" | "teacher" | "user",
     };
+
     sendToken(res, payload);
 
     res.status(201).json({
       success: true,
-      message: "تم التسجيل بنجاح",
+      message: "sign up successful",
       user: {
         id: createdUser.id,
         name: createdUser.name,
@@ -80,7 +81,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     console.error("Register error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "خطأ في الخادم",
+      message: error.message || "internal server error",
     });
   }
 };
@@ -96,7 +97,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     if (!foundUser) {
       res.status(401).json({
         success: false,
-        message: "البريد الإلكتروني أو كلمة المرور غير صحيحة",
+        message: "email or password is incorrect",
       });
       return;
     }
@@ -105,7 +106,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     if (!isMatch) {
       res.status(401).json({
         success: false,
-        message: "البريد الإلكتروني أو كلمة المرور غير صحيحة",
+        message: "email or password is incorrect",
       });
       return;
     }
@@ -118,7 +119,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     res.json({
       success: true,
-      message: "تم تسجيل الدخول بنجاح",
+      message: "login successful",
       user: {
         id: foundUser.id,
         name: foundUser.name,
@@ -131,7 +132,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     console.error("Login error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "خطأ في الخادم",
+      message: error.message || "internal server error",
     });
   }
 };
@@ -154,7 +155,7 @@ export const refreshToken = async (
     if (!refreshToken) {
       res.status(401).json({
         success: false,
-        message: "لا يوجد Refresh Token",
+        message: "No refresh token found",
       });
       return;
     }
@@ -163,7 +164,7 @@ export const refreshToken = async (
     if (!payload) {
       res.status(401).json({
         success: false,
-        message: "Refresh Token غير صالح أو منتهي الصلاحية",
+        message: "Refresh Token invalid or expired",
       });
       return;
     }
@@ -175,7 +176,7 @@ export const refreshToken = async (
     if (!foundUser) {
       res.status(401).json({
         success: false,
-        message: "المستخدم غير موجود",
+        message: "User not found",
       });
       return;
     }
@@ -194,13 +195,13 @@ export const refreshToken = async (
 
     res.json({
       success: true,
-      message: "تم تجديد التوكن بنجاح",
+      message: "Token refreshed successfully",
     });
   } catch (error: any) {
     console.error("Refresh error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "خطأ في الخادم",
+      message: error.message || "internal server error",
     });
   }
 };
@@ -214,7 +215,7 @@ export const getCurrentUser = async (
     if (!userId) {
       res.status(401).json({
         success: false,
-        message: "غير مصرح",
+        message: "Not authorized",
       });
       return;
     }
@@ -229,7 +230,7 @@ export const getCurrentUser = async (
     if (!foundUser) {
       res.status(404).json({
         success: false,
-        message: "المستخدم غير موجود",
+        message: "User not found",
       });
       return;
     }
@@ -242,7 +243,7 @@ export const getCurrentUser = async (
     console.error("Get user error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "خطأ في الخادم",
+      message: error.message || "internal server error",
     });
   }
 };

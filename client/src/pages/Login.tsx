@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import type { LoginCredentials } from "../types/auth.types";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState<LoginCredentials>({
     email: "",
     password: "",
@@ -39,17 +41,14 @@ const Login: React.FC = () => {
     setApiError(null);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      localStorage.setItem("token", "fake-jwt-token");
-      localStorage.setItem(
-        "user",
-        JSON.stringify({ id: "1", name: "أحمد", email: formData.email }),
-      );
-
+      await login(formData);
       navigate("/dashboard");
     } catch (error) {
-      setApiError("فشل تسجيل الدخول. تحقق من بياناتك.");
+      setApiError(
+        error instanceof Error
+          ? error.message
+          : "فشل تسجيل الدخول. تحقق من بياناتك.",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -62,12 +61,13 @@ const Login: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-800">مرحباً بك</h1>
           <p className="text-gray-500 mt-2">سجل الدخول إلى حسابك</p>
         </div>
-        د{" "}
+
         {apiError && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
             {apiError}
           </div>
         )}
+
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -146,7 +146,7 @@ const Login: React.FC = () => {
             )}
           </button>
         </form>
-        \{" "}
+
         <p className="text-center text-gray-600 mt-6">
           ليس لديك حساب؟{" "}
           <Link

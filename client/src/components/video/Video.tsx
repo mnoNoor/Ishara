@@ -218,9 +218,9 @@ const Video = forwardRef<VideoHandle, VideoProps>(
           });
           setHandLandmarker(instance);
         } catch (err) {
-          console.error("فشل تحميل نموذج تتبع اليد:", err);
+          console.error("Failed to load hand tracking model:", err);
           setModelError(
-            "تعذر تحميل نظام تتبع اليد. تحقق من الاتصال بالإنترنت وأعد تحميل الصفحة.",
+            "Failed to load hand tracking system. Check your internet connection and reload the page.",
           );
         }
       };
@@ -469,7 +469,7 @@ const Video = forwardRef<VideoHandle, VideoProps>(
           await videoElement.play();
           setStream(mediaStream);
         } catch (err) {
-          console.error("تعذر الوصول للكاميرا:", err);
+          console.error("Failed to access the camera:", err);
         } finally {
           setIsLoading(false);
         }

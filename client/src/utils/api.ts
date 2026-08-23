@@ -4,16 +4,31 @@ import type {
   AuthResponse,
 } from "../types/auth.types";
 
-const API_BASE_URL =
+export const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:8080/api";
 
 interface ApiRequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
-async function apiRequest<T>(
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshToken(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+      method: "POST",
+      credentials: "include",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function apiRequest<T>(
   endpoint: string,
   options: ApiRequestOptions = {},
+  retryOnUnauthorized = true,
 ): Promise<T> {
   const { body, headers, ...rest } = options;
 
@@ -27,11 +42,27 @@ async function apiRequest<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
+  if (
+    response.status === 401 &&
+    retryOnUnauthorized &&
+    !endpoint.startsWith("/auth/")
+  ) {
+    if (!refreshPromise) {
+      refreshPromise = tryRefreshToken().finally(() => {
+        refreshPromise = null;
+      });
+    }
+    const refreshed = await refreshPromise;
+    if (refreshed) {
+      return apiRequest<T>(endpoint, options, false);
+    }
+  }
+
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
     throw new Error(
-      data?.message || "An error occurred while processing the request",
+      data?.message || data?.error || "An error occurred while processing the request",
     );
   }
 

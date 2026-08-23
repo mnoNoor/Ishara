@@ -180,6 +180,7 @@ const Video = forwardRef<VideoHandle, VideoProps>(
       null,
     );
     const [modelError, setModelError] = useState<string | null>(null);
+    const [cameraError, setCameraError] = useState<string | null>(null);
 
     const recordedFramesRef = useRef<RecordedFrame[]>([]);
     const isRecordingRef = useRef(false);
@@ -468,8 +469,23 @@ const Video = forwardRef<VideoHandle, VideoProps>(
           videoElement.srcObject = mediaStream;
           await videoElement.play();
           setStream(mediaStream);
+          setCameraError(null);
         } catch (err) {
           console.error("Failed to access the camera:", err);
+          if (err instanceof DOMException && err.name === "NotAllowedError") {
+            setCameraError(
+              "تم رفض إذن الكاميرا. يرجى السماح بالوصول من إعدادات المتصفح.",
+            );
+          } else if (
+            err instanceof DOMException &&
+            err.name === "NotFoundError"
+          ) {
+            setCameraError(
+              "لم يتم العثور على كاميرا. تأكد من توصيل كاميرا بجهازك.",
+            );
+          } else {
+            setCameraError("تعذّر تشغيل الكاميرا. حاول مرة أخرى.");
+          }
         } finally {
           setIsLoading(false);
         }
@@ -481,6 +497,11 @@ const Video = forwardRef<VideoHandle, VideoProps>(
         {modelError && (
           <div className="p-3 rounded-lg text-center text-sm font-medium bg-amber-50 text-amber-700 border border-amber-200">
             {modelError}
+          </div>
+        )}
+        {cameraError && (
+          <div className="p-3 rounded-lg text-center text-sm font-medium bg-red-50 text-red-700 border border-red-200">
+            {cameraError}
           </div>
         )}
         <div className="relative aspect-video rounded-lg bg-black overflow-hidden">

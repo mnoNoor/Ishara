@@ -42,7 +42,7 @@ const Login: React.FC = () => {
 
     try {
       await login(formData);
-      navigate("/dashboard");
+      navigate("/translate");
     } catch (error) {
       setApiError(
         error instanceof Error

@@ -1,8 +1,12 @@
 import { Router } from "express";
-import { getDictionary } from "../controllers/dictionaryController";
+import {
+  getDictionary,
+  getDictionaryStats,
+} from "../controllers/dictionaryController";
 
 const router = Router();
 
 router.get("/", getDictionary);
+router.get("/stats", getDictionaryStats);
 
 export default router;

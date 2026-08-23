@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./layout/Layout";
 import SignRecorder from "./components/video/SignRecorder";
@@ -11,9 +12,7 @@ import Dictionary from "./pages/Dictionary";
 import Register from "./pages/Register";
 import Login from "./pages/Login";
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -25,7 +24,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
   }
 
   return <>{children}</>;
-};
+}
 
 function App() {
   return (

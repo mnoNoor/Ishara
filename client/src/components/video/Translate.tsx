@@ -1,16 +1,7 @@
 import { useRef, useState } from "react";
 import Video, { type VideoHandle } from "./Video";
-
-const DIALECTS = [
-  "سورية",
-  "سعودي",
-  "مصري",
-  "لبناني",
-  "عراقي",
-  "خليجي",
-] as const;
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
+import { DIALECTS } from "../../constants/dialects";
+import { apiRequest } from "../../utils/api";
 
 const CAPTURE_DURATION_MS = 3000;
 
@@ -58,17 +49,10 @@ export default function Translate() {
   ) => {
     setIsTranslating(true);
     try {
-      const response = await fetch(`${API_BASE}/translate/sign-to-text`, {
+      const data = await apiRequest<TranslationResult>("/translate/sign-to-text", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dialect, landmarksJson }),
+        body: { dialect, landmarksJson },
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "failed to translate");
-      }
 
       setResult(data);
       setHistory((h) => [data, ...h]);

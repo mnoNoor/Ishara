@@ -140,7 +140,7 @@ export default function About() {
           </div>
           <div className="flex flex-col gap-4">
             <Link
-              to="/record"
+              to="/sign-recorder"
               className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-6 py-4 text-white font-semibold shadow-md hover:bg-blue-700 transition"
             >
               سجّل إشارة جديدة

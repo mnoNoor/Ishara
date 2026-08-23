@@ -1,17 +1,8 @@
 import { useRef, useState } from "react";
 import Video, { type VideoHandle } from "./Video";
 import { transliterate } from "transliteration";
-
-const DIALECTS = [
-  "سورية",
-  "سعودي",
-  "مصري",
-  "لبناني",
-  "عراقي",
-  "خليجي",
-] as const;
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
+import { DIALECTS } from "../../constants/dialects";
+import { apiRequest } from "../../utils/api";
 
 export default function SignRecorder() {
   const videoRef = useRef<VideoHandle>(null);
@@ -77,16 +68,10 @@ export default function SignRecorder() {
 
     setSaving(true);
     try {
-      const response = await fetch(`${API_BASE}/admin/signs/record`, {
+      await apiRequest("/admin/signs/record", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: payload,
       });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || "فشل في الحفظ");
-      }
 
       setMessage({ text: "تم حفظ الإشارة بنجاح ✅", type: "success" });
       setFrameCount(0);

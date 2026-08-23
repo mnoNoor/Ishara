@@ -7,22 +7,14 @@ import {
   sendToken,
   clearTokens,
   verifyRefreshToken,
-  generateToken,
+  setAccessTokenCookie,
   JwtPayload,
 } from "../utils/jwt";
 import { AuthRequest } from "../middleware/auth";
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, password, confirmPassword, dominantHand } = req.body;
-
-    if (password !== confirmPassword) {
-      res.status(400).json({
-        success: false,
-        message: "passwords do not match",
-      });
-      return;
-    }
+    const { name, email, password, dominantHand } = req.body;
 
     const existingUser = await db.query.user.findFirst({
       where: eq(user.email, email),
@@ -77,11 +69,11 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         dominantHand: createdUser.dominantHand,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Register error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "internal server error",
+      message: "internal server error",
     });
   }
 };
@@ -128,11 +120,11 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         dominantHand: foundUser.dominantHand,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "internal server error",
+      message: "internal server error",
     });
   }
 };
@@ -181,27 +173,20 @@ export const refreshToken = async (
       return;
     }
 
-    const newAccessToken = generateToken({
-      userId: payload.userId,
-      role: payload.role,
-    });
-
-    res.cookie("token", newAccessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 60 * 60 * 1000,
+    setAccessTokenCookie(res, {
+      userId: foundUser.id,
+      role: foundUser.role,
     });
 
     res.json({
       success: true,
       message: "Token refreshed successfully",
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Refresh error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "internal server error",
+      message: "internal server error",
     });
   }
 };
@@ -239,11 +224,11 @@ export const getCurrentUser = async (
       success: true,
       user: foundUser,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Get user error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "internal server error",
+      message: "internal server error",
     });
   }
 };

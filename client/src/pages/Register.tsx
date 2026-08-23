@@ -61,7 +61,7 @@ const Register: React.FC = () => {
 
     try {
       await register(formData);
-      navigate("/dashboard");
+      navigate("/translate");
     } catch (error) {
       setApiError(
         error instanceof Error

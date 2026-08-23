@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { apiRequest } from "../utils/api";
 
 export default function Home() {
   const [stats, setStats] = useState({
@@ -9,8 +10,9 @@ export default function Home() {
   });
 
   useEffect(() => {
-    fetch("/api/dictionary/stats")
-      .then((res) => res.json())
+    apiRequest<{ signs: number; variants: number; accuracy: number }>(
+      "/dictionary/stats",
+    )
       .then((data) => setStats(data))
       .catch(() => {
         setStats({
@@ -59,7 +61,7 @@ export default function Home() {
 
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link
-              to="/record"
+              to="/sign-recorder"
               className="px-8 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition shadow-md hover:shadow-lg"
             >
               🖐️ سجّل إشارة جديدة

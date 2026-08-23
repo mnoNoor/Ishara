@@ -7,11 +7,13 @@ import {
   getCurrentUser,
 } from "../controllers/authController";
 import { authMiddleware } from "../middleware/auth";
+import { validate } from "../middleware/validate";
+import { loginSchema, registerSchema } from "../validation/authSchema";
 
 const router = Router();
 
-router.post("/register", register);
-router.post("/login", login);
+router.post("/register", validate(registerSchema), register);
+router.post("/login", validate(loginSchema), login);
 router.post("/refresh-token", refreshToken);
 
 router.post("/logout", authMiddleware, logout);

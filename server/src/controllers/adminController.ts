@@ -1,7 +1,13 @@
 import { Request, Response } from "express";
-import { words, signVariants, Sequence } from "../db/schema";
+import {
+  words,
+  signVariants,
+  sample,
+  signRecorders,
+  Sequence,
+} from "../db/schema";
 import { db } from "../db/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { clearTranslationCache } from "../services/translateService";
 
 export async function recordSign(req: Request, res: Response) {
@@ -17,6 +23,23 @@ export async function recordSign(req: Request, res: Response) {
       imageUrls = [],
     } = req.body;
 
+    const userId = (req as Request & { user?: { id?: string } }).user?.id;
+    if (!userId) {
+      res.status(401).json({ message: "unauthorized" });
+      return;
+    }
+
+    if (
+      !landmarksJson ||
+      !Array.isArray(landmarksJson) ||
+      landmarksJson.length === 0
+    ) {
+      res
+        .status(400)
+        .json({ message: "landmarksJson must be a non-empty array" });
+      return;
+    }
+
     await db.transaction(async (tx) => {
       const [existingWord] = await tx
         .select()
@@ -25,7 +48,6 @@ export async function recordSign(req: Request, res: Response) {
         .limit(1);
 
       let signId: number;
-
       if (!existingWord) {
         const [newWord] = await tx
           .insert(words)
@@ -52,33 +74,60 @@ export async function recordSign(req: Request, res: Response) {
         )
         .limit(1);
 
+      let variantId: number;
       if (existingVariant) {
-        const currentSamples =
-          (existingVariant.landmarksJson as Sequence[]) || [];
-        const updatedSamples = [...currentSamples, landmarksJson];
-        const newSampleCount = (existingVariant.sampleCount ?? 0) + 1;
-
+        variantId = existingVariant.id;
         await tx
           .update(signVariants)
           .set({
-            landmarksJson: updatedSamples,
-            sampleCount: newSampleCount,
+            sampleCount: sql`${signVariants.sampleCount} + 1`,
             videoUrl: videoUrl || existingVariant.videoUrl || "",
             imageUrls:
               imageUrls.length > 0
                 ? imageUrls
                 : existingVariant.imageUrls || [],
           })
-          .where(eq(signVariants.id, existingVariant.id));
+          .where(eq(signVariants.id, variantId));
       } else {
-        await tx.insert(signVariants).values({
-          signId,
-          dialect,
-          videoUrl: videoUrl || "",
-          imageUrls,
-          landmarksJson: [landmarksJson],
-          sampleCount: 1,
-        });
+        const [newVariant] = await tx
+          .insert(signVariants)
+          .values({
+            signId,
+            dialect,
+            videoUrl: videoUrl || "",
+            imageUrls,
+            sampleCount: 1,
+          })
+          .returning();
+        variantId = newVariant.id;
+      }
+
+      await tx.insert(sample).values({
+        variantId,
+        recordedBy: userId,
+        landmarks: landmarksJson,
+      });
+
+      const [existingRecorder] = await tx
+        .select()
+        .from(signRecorders)
+        .where(
+          and(
+            eq(signRecorders.userId, userId),
+            eq(signRecorders.dialect, dialect),
+          ),
+        )
+        .limit(1);
+
+      if (existingRecorder) {
+        await tx
+          .update(signRecorders)
+          .set({ sampleCount: sql`${signRecorders.sampleCount} + 1` })
+          .where(eq(signRecorders.id, existingRecorder.id));
+      } else {
+        await tx
+          .insert(signRecorders)
+          .values({ userId, dialect, sampleCount: 1 });
       }
     });
 

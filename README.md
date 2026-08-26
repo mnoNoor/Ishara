@@ -1,444 +1,159 @@
-﻿# Ishara
+﻿# Ishara (إشارة)
 
-<p align="center">
-  <b>Arabic Sign Language Recognition & Translation Platform</b>
-</p>
+**Ishara** is an open platform for translating **Arabic Sign Language** into text. It tracks 3D hand landmarks from a webcam, stores community-contributed samples, and matches new signs against that library.
 
-<p align="center">
-A full-stack platform for capturing, storing, and translating Arabic sign language gestures using browser-based hand tracking and gesture recognition algorithms.
-
----
-
-## 🌍 Overview
-
-- Storing structured gesture samples.
-- Translating hand movements into Arabic text.
-- Supporting future research and machine learning approaches.
-- Gesture-to-text translation.
-- Admin tools for adding new samples.
-- Confidence-based translation results.
-- PostgreSQL-powered data storage.
-
-## Contents
-
-- [Features](#features)
-- [Architecture](#architecture)
-- [Requirements](#requirements)
-- [Getting started](#getting-started)
-- [Environment variables](#environment-variables)
-- [Available commands](#available-commands)
-- [API overview](#api-overview)
-- [Project structure](#project-structure)
-- [Recognition pipeline](#recognition-pipeline)
-- [Roadmap](#roadmap)
-- [License](#license)
+The project is in active early development. The current recognizer covers a small set of Arabic letters and is intended as a research and data-collection foundation, not a finished production translator.
 
 ## Features
 
-- Browser-based hand tracking with MediaPipe Tasks Vision.
-- 3D hand landmark capture from a webcam.
-- Sign recording for authenticated admins and teachers.
-- Sign-to-text translation using stored gesture samples.
-- Dictionary browsing with category, difficulty, and dialect-aware data.
-- JWT-based authentication with refresh tokens and role-based access control.
-- PostgreSQL persistence through Drizzle ORM.
-- Request validation with Zod and HTTP security middleware with Helmet.
+- **3D hand tracking** — MediaPipe Vision extracts 21 landmarks per hand (63 values with depth), with support for one- or two-handed signs.
+- **Sign-to-text translation** — Sequences of landmarks are compared to stored samples using Dynamic Time Warping (DTW) and a k-nearest-neighbors (KNN) vote.
+- **Dialect-aware dictionary** — Signs can be recorded and matched per dialect (currently: Syrian, Saudi, Egyptian, Lebanese, Iraqi, and Gulf).
+- **Community recording** — Authenticated recorders contribute new landmark sequences so the dataset can grow over time.
+- **Browsable dictionary** — Words, variants, and sample counts are stored in PostgreSQL and exposed through the web app.
 
----
+## How translation works
 
-## Architecture
+Translation is a **timed capture**, not a continuous stream. The user starts the camera, then taps “translate.” The client records about **three seconds** of hand motion, sends the landmark sequence to the API, and shows the best matching Arabic gloss plus a confidence score.
 
-```text
-React + Vite client
-        |
-        v
-Express + TypeScript API
-        |
-        +--> Authentication and authorization
-        +--> Dictionary and dataset routes
-        +--> Translation service
-        |
-        v
-PostgreSQL via Drizzle ORM
+```mermaid
+flowchart LR
+  A[Webcam] --> B[MediaPipe Hand Landmarker]
+  B --> C[Track and sample frames]
+  C --> D["POST /api/translate/sign-to-text"]
+  D --> E[Normalize to 126-D vectors]
+  E --> F[DTW vs dialect samples]
+  F --> G[KNN vote K=5]
+  G --> H[Arabic text + confidence]
 ```
 
-In development, the client runs on `http://localhost:5173` and the API runs on `http://localhost:8080`. In production, the server can serve the built client from `client/dist`.
+### 1. Capture and tracking (browser)
 
-## 🧠 How It Works
+MediaPipe **Hand Landmarker** (float16, GPU when available) runs in `VIDEO` mode on every animation frame. It detects up to **two hands**, each with **21 3D landmarks** (`x`, `y`, `z`).
 
-## Requirements
+While recording:
 
-- Node.js 20 or newer
-- npm
-- Docker Desktop (for the local PostgreSQL database)
-- A modern browser with webcam access
+- Hands are assigned to **stable slots** by tracking wrist position across frames so left/right identity does not flip mid-sign.
+- After capture ends, slots are ordered using MediaPipe **handedness votes** (left vs right).
+- Frames are **not** stored at full camera rate. A frame is kept only if the hands moved enough (mean landmark change above a threshold) **or** 150 ms have passed since the last kept frame (heartbeat). That keeps sequences shorter without dropping the shape of the sign.
+- If no hand motion is recorded, translation is aborted with an error.
+
+The payload is `landmarksJson`: an array of frames, each frame an array of up to two hands, each hand an array of landmark points.
+
+### 2. Request (HTTP)
+
+The client posts to `POST /api/translate/sign-to-text`:
+
+```json
+{
+  "dialect": "سورية",
+  "landmarksJson": [/* frames of hands of { x, y, z } */]
+}
+```
+
+The body is validated (non-empty dialect, at least one frame). Matching is **scoped to that dialect** so a Syrian sample is not compared against an Egyptian variant of the same word.
+
+### 3. Normalization (server)
+
+Each hand is turned into a **63-dimensional** vector (21 points × 3 coordinates):
+
+- Subtract the **wrist** so position in the camera frame does not matter.
+- Divide by the distance from wrist to **middle-finger MCP** so hand size and camera distance do not matter.
+- Missing hands (one-handed signs) become a zero vector.
+
+The two hands are concatenated into a **126-dimensional** vector per frame. The clip becomes a sequence of those vectors.
+
+### 4. Matching: DTW + KNN
+
+Stored samples for the dialect are loaded (cached in memory for about an hour, up to 500 samples per dialect). Sequences with fewer than three frames are skipped.
+
+**Dynamic Time Warping (DTW)** measures how similar two sequences are when they have different lengths or speeds. A Sakoe–Chiba band (~20% of the longer sequence) limits how far the warp path can stray. The DTW cost is divided by the path length so longer signs are not penalized just for having more frames.
+
+**K-nearest neighbors (K = 5)** then votes:
+
+1. Rank all samples by DTW distance.
+2. Take the five closest.
+3. Each neighbor votes for its Arabic gloss with weight `1 / (distance + ε)`.
+4. The gloss with the highest total weight wins.
+
+**Confidence** combines how much of the vote that gloss received with how close the neighbors were (`voteShare × exp(-averageDistance)`), then is returned as a percentage (0–100).
+
+The API responds with `{ word, arabicText, confidence }`. The UI shows the Arabic text, the Latin identifier, confidence, and a short history of recent results.
+
+If there are no usable samples for that dialect, the API returns 404.
+
+DTW is a deliberate choice for this stage: it handles signs of different durations and works with **few samples per word**. That property will remain important even after neural models are added.
+
+### How samples enter the library
+
+Recognition quality depends on the sample set. An authenticated **sign recorder** captures a clip the same way, labels it with Arabic text (transliterated to a `word` id), dialect, category, and difficulty, then saves it via `POST /api/admin/signs/record`. Each sample stores the landmark sequence as JSON, linked to a **word** and a **dialect variant**. Translation never uses raw video—only these landmark trajectories.
+
+## Roadmap
+
+### Recognition models
+
+The long-term plan is a **hybrid recognizer**:
+
+- **LSTM** or **Transformer** models for words that have enough training samples.
+- **DTW + KNN** kept for low-resource words and new signs that do not yet have a large sample set.
+
+This keeps the system usable while the dataset is still sparse, and lets data-rich signs move to sequence models without dropping coverage of rare vocabulary.
+
+### Real-time translation (WebSocket)
+
+Translation is currently a request/response HTTP call after a timed capture. The next step is a **WebSocket** pipeline so landmarks can stream continuously and results can update live.
+
+### Native app
+
+A dedicated mobile (or desktop) client is planned so recording and translation can happen outside the browser, with camera access and a simpler experience for contributors and learners.
+
+## Research and community
+
+Ishara is meant to support **research** on Arabic Sign Language: few-shot recognition, dialect variation, hybrid DTW/neural pipelines, and related HCI topics. The dataset and code are structured so experiments can sit on top of the same collection and evaluation loop.
+
+We intend to **collaborate with deaf associations** to collect authentic samples, review glosses, and expand coverage beyond the current letter set. Community contributions through the recorder remain welcome alongside that partnership.
+
+If you are a researcher, educator, or organization working with Arabic Sign Language, [open an issue](https://github.com/mnoNoor/ishara/issues) or use the in-app contact page.
+
+## Tech stack
+
+| Layer | Stack |
+| --- | --- |
+| Client | React, Vite, Tailwind CSS, MediaPipe Tasks Vision |
+| Server | Node.js, Express, TypeScript |
+| Database | PostgreSQL, Drizzle ORM |
+| Auth | JWT (access + refresh cookies) |
 
 ## Getting started
 
-### 1. Start PostgreSQL
-
-From the repository root:
+**Requirements:** Node.js, Docker (for PostgreSQL), and a camera for translation/recording.
 
 ```bash
+# 1. Start PostgreSQL
 docker compose up -d
+
+# 2. Server
+cd server
+cp .env.example .env   # edit secrets if needed
+npm install
+npm run db:migrate
+npm run dev            # http://localhost:8080
+
+# 3. Client (another terminal)
+cd client
+npm install
+npm run dev            # http://localhost:5173
 ```
 
-The database container uses these local defaults:
+By default the client talks to `http://localhost:8080/api`. Override with `VITE_API_URL` if you change the API origin.
 
-```text
-database: ishara
-user: ishara
-password: ishara
-host: localhost
-port: 5432
-```
-
-### 2. Install dependencies
+Production build from the repo root:
 
 ```bash
-npm install --prefix client
-npm install --prefix server
+npm run build
+npm start
 ```
-
-### 3. Configure the server
-
-Create `server/.env` using the variables in the section below.
-
-### 4. Apply database migrations
-
-```bash
-npm run db:migrate --prefix server
-```
-
-### 5. Start the development servers
-
-Use two terminals from the repository root:
-
-```bash
-npm run dev:server
-```
-
-```bash
-npm run dev:client
-```
-
-Open `http://localhost:5173` in a browser and allow camera access when recording or translating signs.
-Ishara converts hand movements into numerical landmark sequences.
-
-## Environment variables
-
-The API reads environment variables from `server/.env`:
-
-| Variable               | Required | Example                                            | Purpose                              |
-| ---------------------- | -------- | -------------------------------------------------- | ------------------------------------ |
-| `DATABASE_URL`         | Yes      | `postgresql://ishara:ishara@localhost:5432/ishara` | PostgreSQL connection string         |
-| `JWT_SECRET`           | Yes      | `replace-with-an-access-secret`                    | Signs access tokens                  |
-| `REFRESH_TOKEN_SECRET` | Yes      | `replace-with-a-refresh-secret`                    | Signs refresh tokens                 |
-| `JWT_EXPIRES_IN`       | No       | `1h`                                               | Access-token lifetime                |
-| `PORT`                 | No       | `8080`                                             | API port                             |
-| `NODE_ENV`             | No       | `development`                                      | Enables development CORS behavior    |
-| `CORS_ORIGIN`          | No       | `http://localhost:5173`                            | Allowed client origin in development |
-
-Example local configuration:
-
-```dotenv
-DATABASE_URL=postgresql://ishara:ishara@localhost:5432/ishara
-JWT_SECRET=change-this-access-secret
-REFRESH_TOKEN_SECRET=change-this-refresh-secret
-JWT_EXPIRES_IN=1h
-PORT=8080
-NODE_ENV=development
-CORS_ORIGIN=http://localhost:5173
-```
-
-Do not commit `server/.env` or reuse development secrets in production.
-
-## Available commands
-
-Run these from the repository root unless noted otherwise:
-
-| Command                               | Description                                      |
-| ------------------------------------- | ------------------------------------------------ |
-| `npm run dev:client`                  | Start the Vite development server                |
-| `npm run dev:server`                  | Start the API with `tsx` watch mode              |
-| `npm run build`                       | Install dependencies and build client and server |
-| `npm run start`                       | Start the compiled API                           |
-| `npm run lint --prefix client`        | Lint the client                                  |
-| `npm run db:generate --prefix server` | Generate a Drizzle migration                     |
-| `npm run db:migrate --prefix server`  | Apply pending migrations                         |
-| `npm run db:studio --prefix server`   | Open Drizzle Studio                              |
-
-Each hand is represented using:
-
-## API overview
-
-All endpoints are prefixed with `/api`.
-
-| Area                    | Routes                                                                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Health                  | `GET /api/health`                                                                                                              |
-| Authentication          | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh-token`, `POST /api/auth/logout`, `GET /api/auth/me` |
-| Dictionary              | `GET /api/dictionary`                                                                                                          |
-| Translation             | `POST /api/translate/sign-to-text`                                                                                             |
-| Admin and teacher tools | `POST /api/admin/signs/record`                                                                                                 |
-| Admin maintenance       | `POST /api/translate/clear-cache`                                                                                              |
-
-Protected routes require the authentication flow's token or cookie, and recording is limited to users with the `admin` or `teacher` role. Request bodies for translation and recording are validated with Zod schemas on the server.
-
-## Project structure
-
-```text
-client/
-  src/components/       Shared UI and camera/translation components
-  src/pages/             Home, dictionary, authentication, and static pages
-  src/layout/            Application layout
-server/
-  src/controllers/      HTTP request handlers
-  src/db/                Drizzle schema and migrations
-  src/routes/            API route definitions
-  src/services/          Translation and similarity logic
-  src/middleware/        Authentication and request validation
-  src/validation/        Zod request schemas
-```
-
-```
-## Recognition pipeline
-
-1. MediaPipe detects a hand in the camera stream.
-2. The client extracts 3D landmarks for each frame.
-3. The resulting sequence is sent to the translation API.
-4. The translation service compares it with stored samples using Dynamic Time Warping (DTW).
-5. Nearest samples are used for K-Nearest Neighbors (KNN) classification.
-6. The API returns the predicted Arabic text and confidence information.
-
-Each hand contains 21 landmarks with `x`, `y`, and `z` coordinates, or 63 coordinate values per frame.
-21 landmarks × 3 coordinates (x, y, z)
-## Roadmap
-
-The current baseline focuses on webcam capture, dataset storage, authentication, dictionary access, and DTW/KNN translation. Planned improvements include:
-
-- Continuous, real-time translation across sign sequences.
-- Dataset review and quality-verification workflows.
-- Translation feedback and correction tools.
-- Larger and more diverse Arabic sign-language datasets.
-- Evaluation against neural approaches such as LSTM and Transformer models.
-- Mobile clients and research-oriented experiments.
 
 ## License
 
-Ishara is licensed under the Apache License 2.0. See [LICENSE](LICENSE).
-= 63 values per hand
-## Author
-
-Created by [mnoNoor](https://github.com/mnoNoor).
-```
-
-The translation pipeline:
-
-```
-Camera
-  ↓
-MediaPipe Hand Tracking
-  ↓
-3D Landmark Extraction
-  ↓
-Gesture Sequence
-  ↓
-DTW Similarity Matching
-  ↓
-KNN Classification
-  ↓
-Arabic Text Output
-```
-
----
-
-## 🤖 Recognition Approach
-
-The current version uses a lightweight and explainable approach:
-
-### Dynamic Time Warping (DTW)
-
-Used to compare gesture sequences while handling differences in movement speed between users.
-
-### K-Nearest Neighbors (KNN)
-
-Used to classify gestures based on the closest stored examples.
-
-This approach allows Ishara to expand its dataset without requiring model retraining after every new sample.
-
-Future versions may explore deep learning models such as LSTM and Transformers when larger datasets become available.
-
----
-
-## 🏗️ Architecture
-
-```
-React + Vite Client
-
-        │
-
-Express + TypeScript API
-
-        │
-
-Translation Service
-
-        │
-
-DTW + KNN Engine
-
-        │
-
-PostgreSQL Database
-```
-
----
-
-## 🛠️ Tech Stack
-
-### Frontend
-
-- React
-- Vite
-- TypeScript
-- Tailwind CSS
-- React Router
-- MediaPipe Tasks Vision
-
-### Backend
-
-- Node.js
-- Express
-- TypeScript
-- Drizzle ORM
-- PostgreSQL
-- Zod
-- Helmet
-
-### Development
-
-- Docker
-- npm
-
----
-
-## 🗄️ Data Model
-
-Ishara stores:
-
-### Signs
-
-General information about each sign:
-
-- Arabic text
-- Category
-- Difficulty
-- Internal identifier
-
-### Sign Variants
-
-Gesture samples for different variations:
-
-- Dialect
-- Landmark sequences
-- Media references
-- Sample count
-
----
-
-## 📊 Dataset Growth
-
-The project is currently focused on creating a reliable foundation before large-scale expansion.
-
-Future dataset growth will include:
-
-- More Arabic signs.
-- More users and contributors.
-- Quality verification systems.
-- User feedback collection.
-- Improved filtering against incorrect samples.
-
----
-
-## 🚀 Roadmap
-
-### Current
-
-✅ Webcam hand tracking
-✅ Gesture recording
-✅ PostgreSQL storage
-✅ DTW + KNN translation engine
-
-### Next
-
-- Real-time continuous translation.
-- Improved user experience.
-- Authentication and protected admin tools.
-- Translation feedback system.
-- Dataset review workflow.
-
-### Future
-
-- Larger Arabic sign language dataset.
-- LSTM / Transformer-based recognition.
-- Mobile applications.
-- Research-oriented experiments.
-
----
-
-## 🔬 Research Potential
-
-Ishara can serve as a foundation for research in:
-
-- Arabic sign language recognition.
-- Human-computer interaction.
-- Accessibility technologies.
-- Gesture recognition algorithms.
-- Machine learning approaches for sign translation.
-
-The current system provides a transparent baseline that can later be compared with neural network-based solutions.
-
----
-
-## ⚙️ Running Locally
-
-Requirements:
-
-- Node.js
-- npm
-- Docker
-
-Start PostgreSQL:
-
-```bash
-docker-compose up -d
-```
-
-Install dependencies:
-
-```bash
-npm install --prefix client
-npm install --prefix server
-```
-
-Run development servers:
-
-```bash
-npm run dev:client
-npm run dev:server
-```
-
----
-
-## 📄 License
-
-This project is licensed under the Apache License 2.0.
-
----
-
-## 👤 Author
-
-**mnoNoor**
-
-Building technology for accessibility and Arabic sign language understanding.
+[Apache License 2.0](LICENSE)

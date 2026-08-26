@@ -23,7 +23,7 @@ export default function Header() {
           الرئيسية
         </NavLink>
       </li>
-      {user && (user.role === "admin" || user.role === "teacher") && (
+      {user && (user.role === "admin" || user.role === "sign recorder") && (
         <li>
           <NavLink
             to="/sign-recorder"

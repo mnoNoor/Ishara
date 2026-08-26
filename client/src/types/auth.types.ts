@@ -11,7 +11,7 @@ export interface RegisterCredentials {
   dominantHand: DominantHand | "";
 }
 
-export type UserRole = "admin" | "teacher" | "user";
+export type UserRole = "admin" | "sign recorder" | "user";
 export type DominantHand = "right" | "left";
 
 export interface User {

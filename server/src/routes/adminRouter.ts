@@ -8,7 +8,7 @@ const router = Router();
 router.post(
   "/signs/record",
   authMiddleware,
-  roleMiddleware(["admin", "teacher"]),
+  roleMiddleware(["admin", "sign_recorder"]),
   validate(recordSignSchema),
   recordSign,
 );

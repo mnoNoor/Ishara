@@ -1,7 +1,7 @@
 import NodeCache from "node-cache";
 import { db } from "../db/db";
-import { signVariants, words } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { sample, signVariants, words } from "../db/schema";
+import { eq, sql } from "drizzle-orm";
 
 type Landmark = { x: number; y: number; z?: number };
 type Frame = Landmark[][];
@@ -16,6 +16,7 @@ const HAND_VECTOR_SIZE = LANDMARK_COUNT * COORDS_PER_POINT;
 const FRAME_VECTOR_SIZE = HAND_VECTOR_SIZE * MAX_HANDS;
 
 const DEFAULT_K = 5;
+const MAX_SAMPLES_PER_DIALECT = 500;
 
 // transform hand landmarks into a normalized vector
 function normalizeHand(hand: Landmark[] | undefined): number[] {
@@ -32,7 +33,7 @@ function normalizeHand(hand: Landmark[] | undefined): number[] {
         (middleMcp.y - wrist.y) ** 2 +
         ((middleMcp.z ?? 0) - (wrist.z ?? 0)) ** 2,
     ),
-    1e-6, // avoid division by zero
+    1e-6,
   );
 
   const vector: number[] = [];
@@ -134,11 +135,10 @@ export function dtwDistance(
     }
   }
 
-  // normalize the DTW distance by the number of steps to get an average distance
   return dp[n][m] / Math.max(steps, 1);
 }
 
-// fetch all sign variants for a given dialect, convert their landmarks to vectors, and cache the result
+// fetch samples for a given dialect, convert them to vectors, and cache the result
 export async function getVariantVectorsForDialect(dialect: string) {
   const cacheKey = `variants_${dialect}`;
   const cached = cache.get(cacheKey);
@@ -152,26 +152,25 @@ export async function getVariantVectorsForDialect(dialect: string) {
     }[];
   }
 
-  const variants = await db
+  const samples = await db
     .select({
-      id: signVariants.id,
-      landmarksJson: signVariants.landmarksJson,
+      variantId: sample.variantId,
+      landmarks: sample.landmarks,
       word: words.word,
       arabicText: words.arabicText,
     })
-    .from(signVariants)
+    .from(sample)
+    .innerJoin(signVariants, eq(sample.variantId, signVariants.id))
     .innerJoin(words, eq(signVariants.signId, words.id))
-    .where(eq(signVariants.dialect, dialect));
+    .where(eq(signVariants.dialect, dialect))
+    .limit(MAX_SAMPLES_PER_DIALECT);
 
-  const result = variants.flatMap((v) => {
-    const samples = v.landmarksJson as Sequence[];
-    return samples.map((sequence) => ({
-      id: v.id,
-      word: v.word,
-      arabicText: v.arabicText,
-      vectors: sequenceToVectors(sequence),
-    }));
-  });
+  const result = samples.map((s) => ({
+    id: s.variantId,
+    word: s.word,
+    arabicText: s.arabicText,
+    vectors: sequenceToVectors(s.landmarks as Sequence),
+  }));
 
   if (result.length > 0) {
     cache.set(cacheKey, result);
@@ -212,7 +211,6 @@ async function findKNearestNeighbors(
     });
   }
 
-  // sort ascending by distance and keep only the k closest neighbors
   distances.sort((a, b) => a.distance - b.distance);
   const neighbors = distances.slice(0, Math.min(k, distances.length));
 
@@ -226,9 +224,7 @@ async function findKNearestNeighbors(
   return neighbors;
 }
 
-// find the best matching sign for a given input sequence using a KNN classifier:
-// gathers the k closest variants by DTW distance, then lets them vote
-// (weighted by inverse distance, so closer neighbors count more) on the winning word
+// find the best matching sign for a given input sequence using a KNN classifier
 export async function findBestMatch(
   inputSequence: Sequence,
   dialect: string,
@@ -255,8 +251,6 @@ export async function findBestMatch(
     return null;
   }
 
-  // weighted vote: each neighbor votes for its word, weighted by inverse distance
-  // (epsilon avoids division by zero for a near-perfect match)
   const epsilon = 1e-6;
 
   const votes = new Map<
@@ -280,7 +274,6 @@ export async function findBestMatch(
     }
   }
 
-  // pick the word with the highest total weighted vote
   let bestEntry: {
     word: string;
     arabicText: string;
@@ -301,8 +294,6 @@ export async function findBestMatch(
     return null;
   }
 
-  // confidence blends how strongly the neighbors agreed (vote share) with how
-  // close the winning neighbors actually were (distance score)
   const voteShare = bestEntry.weight / totalWeight;
   const avgDistance =
     bestEntry.distances.reduce((sum, d) => sum + d, 0) /

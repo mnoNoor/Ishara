@@ -53,7 +53,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     const payload: JwtPayload = {
       userId: createdUser.id,
-      role: createdUser.role as "admin" | "teacher" | "user",
+      role: createdUser.role as "admin" | "sign_recorder" | "user",
     };
 
     sendToken(res, payload);
@@ -105,7 +105,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     const payload: JwtPayload = {
       userId: foundUser.id,
-      role: foundUser.role as "admin" | "teacher" | "user",
+      role: foundUser.role as "admin" | "sign_recorder" | "user",
     };
     sendToken(res, payload);
 

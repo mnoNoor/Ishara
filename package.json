@@ -9,7 +9,7 @@
     "dev:client": "npm run dev --prefix client",
     "dev:server": "npm run dev --prefix server"
   },
-  "license": "Apache-2.0",
+  "license": "AGPL-3.0-or-later",
   "main": "index.js",
   "repository": {
     "type": "git",

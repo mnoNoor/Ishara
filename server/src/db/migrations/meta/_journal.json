@@ -22,6 +22,13 @@
       "when": 1787424849739,
       "tag": "0002_same_chronomancer",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788040523496,
+      "tag": "0003_nervous_william_stryker",
+      "breakpoints": true
     }
   ]
 }

@@ -6,106 +6,63 @@ The project is in active early development. The current recognizer covers a smal
 
 ## Features
 
-- **3D hand tracking** — MediaPipe Vision extracts 21 landmarks per hand (63 values with depth), with support for one- or two-handed signs.
-- **Sign-to-text translation** — Sequences of landmarks are compared to stored samples using Dynamic Time Warping (DTW) and a k-nearest-neighbors (KNN) vote.
-- **Dialect-aware dictionary** — Signs can be recorded and matched per dialect (currently: Syrian, Saudi, Egyptian, Lebanese, Iraqi, and Gulf).
-- **Community recording** — Authenticated recorders contribute new landmark sequences so the dataset can grow over time.
-- **Browsable dictionary** — Words, variants, and sample counts are stored in PostgreSQL and exposed through the web app.
+- **3D hand tracking** — MediaPipe Vision extracts 21 landmarks per hand (63 values with depth), supporting one- or two-handed signs.
+- **Two translation modes** — a timed **HTTP capture** for one-shot translation, and a streaming **WebSocket** pipeline for live, continuous translation.
+- **Dialect-aware dictionary** — signs are recorded and matched per dialect (currently Syrian, Saudi, Egyptian, Lebanese, Iraqi, and Gulf).
+- **DTW + KNN matching** — sequences are compared with Dynamic Time Warping and classified with a k-nearest-neighbors vote, which works well even with few samples per word.
+- **Community recording** — authenticated recorders contribute new landmark sequences so the dataset can grow over time.
+- **Browsable dictionary** — words, variants, and sample counts live in PostgreSQL and are exposed through the web app.
 
-## How translation works
-
-Translation is a **timed capture**, not a continuous stream. The user starts the camera, then taps “translate.” The client records about **three seconds** of hand motion, sends the landmark sequence to the API, and shows the best matching Arabic gloss plus a confidence score.
+## How it works
 
 ```mermaid
 flowchart LR
   A[Webcam] --> B[MediaPipe Hand Landmarker]
-  B --> C[Track and sample frames]
-  C --> D["POST /api/translate/sign-to-text"]
-  D --> E[Normalize to 126-D vectors]
-  E --> F[DTW vs dialect samples]
-  F --> G[KNN vote K=5]
+  B --> C[Track & sample frames]
+  C --> D{Mode}
+  D -->|Timed capture| E["POST /api/translate/sign-to-text"]
+  D -->|Streaming| F[WebSocket session]
+  E --> G[Normalize -> DTW vs samples -> KNN vote]
+  F --> G
   G --> H[Arabic text + confidence]
 ```
 
-### 1. Capture and tracking (browser)
+This README stays at a product level. Full algorithmic and architectural detail — normalization formulas, the DTW/Sakoe-Chiba band, KNN voting, hold detection for live translation, database schema, and file-level responsibilities — lives in [`docs/PipelineProcess.md`](docs/PipelineProcess.md).
 
-MediaPipe **Hand Landmarker** (float16, GPU when available) runs in `VIDEO` mode on every animation frame. It detects up to **two hands**, each with **21 3D landmarks** (`x`, `y`, `z`).
+### Timed-capture translation
 
-While recording:
-
-- Hands are assigned to **stable slots** by tracking wrist position across frames so left/right identity does not flip mid-sign.
-- After capture ends, slots are ordered using MediaPipe **handedness votes** (left vs right).
-- Frames are **not** stored at full camera rate. A frame is kept only if the hands moved enough (mean landmark change above a threshold) **or** 150 ms have passed since the last kept frame (heartbeat). That keeps sequences shorter without dropping the shape of the sign.
-- If no hand motion is recorded, translation is aborted with an error.
-
-The payload is `landmarksJson`: an array of frames, each frame an array of up to two hands, each hand an array of landmark points.
-
-### 2. Request (HTTP)
-
-The client posts to `POST /api/translate/sign-to-text`:
+The user starts the camera and taps "translate." The client records a few seconds of hand motion, keeping only frames where the hands moved enough or 150 ms have passed (a heartbeat), then posts the landmark sequence to `POST /api/translate/sign-to-text`, scoped to a dialect:
 
 ```json
 {
   "dialect": "سورية",
-  "landmarksJson": [/* frames of hands of { x, y, z } */]
+  "landmarksJson": [
+    /* frames of hands of { x, y, z } */
+  ]
 }
 ```
 
-The body is validated (non-empty dialect, at least one frame). Matching is **scoped to that dialect** so a Syrian sample is not compared against an Egyptian variant of the same word.
+The server normalizes each hand into a 126-D vector, matches it against cached samples for that dialect with DTW, and returns the best match from a 5-nearest-neighbor vote:
 
-### 3. Normalization (server)
+```json
+{ "word": "hello", "arabicText": "مرحبا", "confidence": 85.5 }
+```
 
-Each hand is turned into a **63-dimensional** vector (21 points × 3 coordinates):
+If there are no usable samples for the dialect, the API returns 404.
 
-- Subtract the **wrist** so position in the camera frame does not matter.
-- Divide by the distance from wrist to **middle-finger MCP** so hand size and camera distance do not matter.
-- Missing hands (one-handed signs) become a zero vector.
+### Live translation (WebSocket)
 
-The two hands are concatenated into a **126-dimensional** vector per frame. The clip becomes a sequence of those vectors.
-
-### 4. Matching: DTW + KNN
-
-Stored samples for the dialect are loaded (cached in memory for about an hour, up to 500 samples per dialect). Sequences with fewer than three frames are skipped.
-
-**Dynamic Time Warping (DTW)** measures how similar two sequences are when they have different lengths or speeds. A Sakoe–Chiba band (~20% of the longer sequence) limits how far the warp path can stray. The DTW cost is divided by the path length so longer signs are not penalized just for having more frames.
-
-**K-nearest neighbors (K = 5)** then votes:
-
-1. Rank all samples by DTW distance.
-2. Take the five closest.
-3. Each neighbor votes for its Arabic gloss with weight `1 / (distance + ε)`.
-4. The gloss with the highest total weight wins.
-
-**Confidence** combines how much of the vote that gloss received with how close the neighbors were (`voteShare × exp(-averageDistance)`), then is returned as a percentage (0–100).
-
-The API responds with `{ word, arabicText, confidence }`. The UI shows the Arabic text, the Latin identifier, confidence, and a short history of recent results.
-
-If there are no usable samples for that dialect, the API returns 404.
-
-DTW is a deliberate choice for this stage: it handles signs of different durations and works with **few samples per word**. That property will remain important even after neural models are added.
+For continuous signing, a WebSocket session streams landmarks as they're captured. The server detects moments of stillness ("holds") to segment individual signs and match them against a hold-indexed trie as they happen, falling back to a sliding-window DTW match for signs without a clear hold. The session emits `partial`, `final`, or `idle` events as the user signs, instead of waiting for a single request/response round trip.
 
 ### How samples enter the library
 
-Recognition quality depends on the sample set. An authenticated **sign recorder** captures a clip the same way, labels it with Arabic text (transliterated to a `word` id), dialect, category, and difficulty, then saves it via `POST /api/admin/signs/record`. Each sample stores the landmark sequence as JSON, linked to a **word** and a **dialect variant**. Translation never uses raw video—only these landmark trajectories.
+An authenticated **sign recorder** captures a clip the same way translation does, labels it with Arabic text, a transliterated `word` id, dialect, category, and difficulty, then saves it via `POST /api/admin/signs/record`. Each sample is stored as a landmark sequence linked to a word and a dialect variant; translation never touches raw video, only these trajectories. Adding a sample invalidates that dialect's cache so the next translation picks it up.
 
 ## Roadmap
 
-### Recognition models
-
-The long-term plan is a **hybrid recognizer**:
-
-- **LSTM** or **Transformer** models for words that have enough training samples.
-- **DTW + KNN** kept for low-resource words and new signs that do not yet have a large sample set.
-
-This keeps the system usable while the dataset is still sparse, and lets data-rich signs move to sequence models without dropping coverage of rare vocabulary.
-
-### Real-time translation (WebSocket)
-
-Translation is currently a request/response HTTP call after a timed capture. The next step is a **WebSocket** pipeline so landmarks can stream continuously and results can update live.
-
-### Native app
-
-A dedicated mobile (or desktop) client is planned so recording and translation can happen outside the browser, with camera access and a simpler experience for contributors and learners.
+- **Hybrid recognition** — LSTM/Transformer models for data-rich words, with DTW + KNN retained for low-resource and newly added signs.
+- **Native app** — a dedicated mobile/desktop client for recording and translating outside the browser.
+- **Broader coverage** — more dialects, more gesture variants of the same word, and normalization for signer fatigue.
 
 ## Research and community
 
@@ -117,12 +74,15 @@ If you are a researcher, educator, or organization working with Arabic Sign Lang
 
 ## Tech stack
 
-| Layer | Stack |
-| --- | --- |
-| Client | React, Vite, Tailwind CSS, MediaPipe Tasks Vision |
-| Server | Node.js, Express, TypeScript |
-| Database | PostgreSQL, Drizzle ORM |
-| Auth | JWT (access + refresh cookies) |
+| Layer     | Stack                                             |
+| --------- | ------------------------------------------------- |
+| Client    | React, Vite, Tailwind CSS, MediaPipe Tasks Vision |
+| Server    | Node.js, Express, TypeScript                      |
+| Database  | PostgreSQL, Drizzle ORM                           |
+| Real-time | WebSocket                                         |
+| Auth      | JWT (access + refresh cookies)                    |
+
+See [`docs/ProjectStructure.md`](docs/ProjectStructure.md) for the full file layout.
 
 ## Getting started
 

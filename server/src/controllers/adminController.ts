@@ -1,16 +1,11 @@
-import { Request, Response } from "express";
-import {
-  words,
-  signVariants,
-  sample,
-  signRecorders,
-  Sequence,
-} from "../db/schema";
+import { Response } from "express";
+import { words, signVariants, sample, signRecorders } from "../db/schema";
 import { db } from "../db/db";
 import { eq, and, sql } from "drizzle-orm";
 import { clearTranslationCache } from "../services/translateService";
+import { AuthRequest } from "../middleware/auth";
 
-export async function recordSign(req: Request, res: Response) {
+export async function recordSign(req: AuthRequest, res: Response) {
   try {
     const {
       word,
@@ -23,7 +18,7 @@ export async function recordSign(req: Request, res: Response) {
       imageUrls = [],
     } = req.body;
 
-    const userId = (req as Request & { user?: { id?: string } }).user?.id;
+    const userId = req.user?.userId;
     if (!userId) {
       res.status(401).json({ message: "unauthorized" });
       return;

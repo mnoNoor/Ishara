@@ -169,7 +169,7 @@ export async function getVariantVectorsForDialect(dialect: string) {
     id: s.variantId,
     word: s.word,
     arabicText: s.arabicText,
-    vectors: sequenceToVectors(s.landmarks as Sequence),
+    vectors: sequenceToVectors(s.landmarks as unknown as Sequence),
   }));
 
   if (result.length > 0) {

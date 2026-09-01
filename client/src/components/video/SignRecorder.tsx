@@ -50,12 +50,8 @@ export default function SignRecorder() {
 
     const word = transliterate(arabicText.trim(), {}).toLowerCase();
 
-    const landmarksJson = frames.map((f) => f.landmarks);
-    console.log(
-      "Landmarks structure:",
-      JSON.stringify(landmarksJson[0]?.slice(0, 2)),
-    );
-    console.log("Total frames:", landmarksJson.length);
+    const landmarksJson = frames;
+
     const payload = {
       word,
       arabicText: arabicText.trim(),
@@ -106,7 +102,7 @@ export default function SignRecorder() {
             ref={videoRef}
             mode="record"
             isActive={isRecording}
-            onLandmarks={() => {
+            onFrame={() => {
               if (isRecording) {
                 const frames = videoRef.current?.getRecordedFrames();
                 setFrameCount(frames?.length ?? 0);
@@ -141,8 +137,6 @@ export default function SignRecorder() {
             ← "marhaba")
           </p>
         </div>
-
-        {/* اللهجة مخفية افتراضياً (سورية) */}
       </div>
 
       <div className="flex gap-3 justify-center flex-wrap">

@@ -6,158 +6,80 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import {
-  FilesetResolver,
-  HandLandmarker,
-  DrawingUtils,
-} from "@mediapipe/tasks-vision";
+
+import { VisionEngine } from "../vision/VisionEngine";
+import { DrawingLayer } from "../vision/drawing/DrawingLayer";
+import { FrameRecorder } from "../vision/recording/FrameRecorder";
+import { normalizeLandmarks } from "../vision/processing/landmarkFilters";
 import type {
-  HandLandmarkerResult,
-  NormalizedLandmark,
-} from "@mediapipe/tasks-vision";
+  Landmark,
+  Sequence,
+  VisionEngineOptions,
+  VisionFrame,
+} from "../vision/types";
 
 export type VideoMode = "record" | "practice" | "translate";
 
-export interface RecordedFrame {
-  timestamp: number;
-  landmarks: NormalizedLandmark[][];
-}
+export type ReferenceFrame = Landmark[][];
 
 export interface VideoProps {
   mode?: VideoMode;
-  referenceLandmarks?: NormalizedLandmark[][][];
-  onLandmarks?: (landmarks: NormalizedLandmark[][], timestamp: number) => void;
+  referenceLandmarks?: ReferenceFrame[];
+  onFrame?: (frame: VisionFrame) => void;
   isActive?: boolean;
   feedbackThreshold?: number;
   className?: string;
+  engineOptions?: VisionEngineOptions;
 }
 
 export interface VideoHandle {
   startRecording: () => void;
   stopRecording: () => void;
-  getRecordedFrames: () => RecordedFrame[];
+  getRecordedFrames: () => Sequence;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
 }
 
-const FRAME_CHANGE_THRESHOLD = 0.015;
-const HEARTBEAT_INTERVAL_MS = 150;
-const TRACK_STALE_MS = 500;
-
-function euclideanDistance(
-  a: NormalizedLandmark,
-  b: NormalizedLandmark,
-): number {
+function euclideanDistance(a: Landmark, b: Landmark): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
-  const dz = (a.z ?? 0) - (b.z ?? 0);
+  const dz = a.z - b.z;
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 function frameSimilarity(
-  userLandmarks: NormalizedLandmark[][],
-  refLandmarks: NormalizedLandmark[][],
+  userHands: Landmark[][],
+  refHands: ReferenceFrame,
 ): number {
-  if (!userLandmarks.length || !refLandmarks.length) return 0;
-  const userHand = userLandmarks[0];
-  const refHand = refLandmarks[0];
+  if (!userHands.length || !refHands.length) return 0;
+
+  const userHand = userHands[0];
+  const refHand = refHands[0];
   if (!userHand || !refHand || userHand.length !== refHand.length) return 0;
 
-  let totalDist = 0;
-  for (let i = 0; i < userHand.length; i++) {
-    totalDist += euclideanDistance(userHand[i], refHand[i]);
-  }
-  const avgDist = totalDist / userHand.length;
-  const similarity = Math.exp(-avgDist * 10);
-  return Math.min(1, similarity);
-}
-
-function frameHasSignificantChange(
-  current: NormalizedLandmark[][],
-  previous: NormalizedLandmark[][] | null,
-  threshold: number,
-): boolean {
-  if (!previous) return true;
-  if (current.length !== previous.length) return true;
+  if (userHand.length === 0) return 0;
+  const normalizedUserHand = normalizeLandmarks(
+    userHand.map((l) => ({ ...l, visibility: 1 })),
+  );
+  const normalizedRefHand = normalizeLandmarks(
+    refHand.map((l) => ({ ...l, visibility: 1 })),
+  );
 
   let totalDist = 0;
-  let totalPoints = 0;
-
-  for (let h = 0; h < current.length; h++) {
-    const curHand = current[h];
-    const prevHand = previous[h];
-    if (!curHand || !prevHand || curHand.length !== prevHand.length) {
-      return true;
-    }
-    for (let p = 0; p < curHand.length; p++) {
-      totalDist += euclideanDistance(curHand[p], prevHand[p]);
-      totalPoints++;
-    }
+  for (let i = 0; i < normalizedUserHand.length; i++) {
+    totalDist += euclideanDistance(normalizedUserHand[i], normalizedRefHand[i]);
   }
-
-  if (totalPoints === 0) return true;
-  return totalDist / totalPoints > threshold;
+  const avgDist = totalDist / normalizedUserHand.length;
+  // Convert distance to similarity score in [0, 1]
+  // need to tune the scaling factor (10) based on empirical testing
+  return Math.min(1, Math.exp(-avgDist * 10));
 }
 
-interface HandTrack {
-  lastWrist: NormalizedLandmark | null;
-  lastSeenAt: number;
-  leftVotes: number;
-  rightVotes: number;
-}
-
-function freshTracks(): [HandTrack, HandTrack] {
-  return [
-    { lastWrist: null, lastSeenAt: 0, leftVotes: 0, rightVotes: 0 },
-    { lastWrist: null, lastSeenAt: 0, leftVotes: 0, rightVotes: 0 },
-  ];
-}
-
-function wristOf(hand: NormalizedLandmark[]): NormalizedLandmark {
-  return hand[0];
-}
-
-function posDist(a: NormalizedLandmark, b: NormalizedLandmark): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function liveWrist(track: HandTrack, now: number): NormalizedLandmark | null {
-  if (!track.lastWrist) return null;
-  if (now - track.lastSeenAt > TRACK_STALE_MS) return null;
-  return track.lastWrist;
-}
-
-function assignToTracks(
-  detectedHands: NormalizedLandmark[][],
-  tracks: [HandTrack, HandTrack],
-  now: number,
-): [NormalizedLandmark[] | null, NormalizedLandmark[] | null] {
-  if (detectedHands.length === 0) return [null, null];
-
-  const w0 = liveWrist(tracks[0], now);
-  const w1 = liveWrist(tracks[1], now);
-
-  if (detectedHands.length === 1) {
-    const wrist = wristOf(detectedHands[0]);
-    const d0 = w0 ? posDist(wrist, w0) : Infinity;
-    const d1 = w1 ? posDist(wrist, w1) : Infinity;
-    if (d0 === Infinity && d1 === Infinity) {
-      return [detectedHands[0], null];
-    }
-    return d1 < d0 ? [null, detectedHands[0]] : [detectedHands[0], null];
-  }
-
-  const [handA, handB] = detectedHands;
-  const wristA = wristOf(handA);
-  const wristB = wristOf(handB);
-
-  if (w0 && w1) {
-    const costKeep = posDist(wristA, w0) + posDist(wristB, w1);
-    const costSwap = posDist(wristA, w1) + posDist(wristB, w0);
-    return costSwap < costKeep ? [handB, handA] : [handA, handB];
-  }
-
-  return [handA, handB];
+function presentHands(frame: VisionFrame): Landmark[][] {
+  const hands: Landmark[][] = [];
+  if (frame.hands.left) hands.push(frame.hands.left.landmarks);
+  if (frame.hands.right) hands.push(frame.hands.right.landmarks);
+  return hands;
 }
 
 const Video = forwardRef<VideoHandle, VideoProps>(
@@ -165,36 +87,27 @@ const Video = forwardRef<VideoHandle, VideoProps>(
     {
       mode = "practice",
       referenceLandmarks,
-      onLandmarks,
+      onFrame,
       isActive = true,
       feedbackThreshold = 0.85,
       className = "",
+      engineOptions,
     },
     ref,
   ) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [handLandmarker, setHandLandmarker] = useState<HandLandmarker | null>(
-      null,
-    );
+    const [engineReady, setEngineReady] = useState(false);
     const [modelError, setModelError] = useState<string | null>(null);
     const [cameraError, setCameraError] = useState<string | null>(null);
 
-    const recordedFramesRef = useRef<RecordedFrame[]>([]);
+    const engineRef = useRef<VisionEngine | null>(null);
+    const drawingLayerRef = useRef<DrawingLayer | null>(null);
+    const frameRecorderRef = useRef(new FrameRecorder());
     const isRecordingRef = useRef(false);
-
-    const rawTrackFramesRef = useRef<
-      {
-        timestamp: number;
-        slots: [NormalizedLandmark[] | null, NormalizedLandmark[] | null];
-      }[]
-    >([]);
-    const tracksRef = useRef<[HandTrack, HandTrack]>(freshTracks());
-
-    const lastPushedFrameRef = useRef<NormalizedLandmark[][] | null>(null);
-    const lastPushedTimestampRef = useRef<number>(0);
 
     const frameIndexRef = useRef(0);
     const lastFeedbackRef = useRef<number | null>(null);
@@ -203,35 +116,38 @@ const Video = forwardRef<VideoHandle, VideoProps>(
     const detectFrameRef = useRef<() => void>(() => {});
 
     useEffect(() => {
-      const loadModel = async () => {
-        try {
-          const wasm = await FilesetResolver.forVisionTasks(
-            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
-          );
-          const instance = await HandLandmarker.createFromOptions(wasm, {
-            baseOptions: {
-              modelAssetPath:
-                "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-              delegate: "GPU",
-            },
-            numHands: 2,
-            runningMode: "VIDEO",
-          });
-          setHandLandmarker(instance);
-        } catch (err) {
-          console.error("Failed to load hand tracking model:", err);
+      const engine = new VisionEngine();
+      engineRef.current = engine;
+
+      engine
+        .initialize(engineOptions)
+        .then(() => setEngineReady(true))
+        .catch((err: Error) => {
+          console.error("Failed to load vision tracking models:", err);
           setModelError(
-            "Failed to load hand tracking system. Check your internet connection and reload the page.",
+            "تعذّر تحميل نظام تتبع الحركة. تحقق من اتصال الإنترنت وأعد تحميل الصفحة.",
           );
-        }
+        });
+
+      return () => {
+        engine.close();
+        engineRef.current = null;
+        drawingLayerRef.current = null;
       };
-      loadModel();
     }, []);
 
     const detectFrame = useCallback(() => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      if (!video || !canvas || !handLandmarker || video.readyState < 2) {
+      const engine = engineRef.current;
+
+      if (
+        !video ||
+        !canvas ||
+        !engine ||
+        !engine.ready ||
+        video.readyState < 2
+      ) {
         animationRef.current = requestAnimationFrame(detectFrameRef.current);
         return;
       }
@@ -244,94 +160,48 @@ const Video = forwardRef<VideoHandle, VideoProps>(
         canvas.height = video.videoHeight;
       }
 
-      const detections = handLandmarker.detectForVideo(
-        video,
-        performance.now(),
-      );
-      drawResults(detections, canvas, video);
-
-      if (detections.landmarks && detections.landmarks.length > 0) {
-        const currentTime = video.currentTime;
-        const landmarks = detections.landmarks;
-
-        onLandmarks?.(landmarks, currentTime);
-
-        if (
-          (mode === "record" || mode === "translate") &&
-          isRecordingRef.current &&
-          isActive
-        ) {
-          const now = performance.now();
-
-          const [slot0, slot1] = assignToTracks(
-            detections.landmarks,
-            tracksRef.current,
-            now,
-          );
-
-          if (slot0) {
-            tracksRef.current[0].lastWrist = wristOf(slot0);
-            tracksRef.current[0].lastSeenAt = now;
-          }
-          if (slot1) {
-            tracksRef.current[1].lastWrist = wristOf(slot1);
-            tracksRef.current[1].lastSeenAt = now;
-          }
-
-          detections.handedness.forEach((catList, i) => {
-            const hand = detections.landmarks[i];
-            const top = catList[0];
-            if (!top) return;
-            const slotIdx = hand === slot0 ? 0 : hand === slot1 ? 1 : -1;
-            if (slotIdx === -1) return;
-            if (top.categoryName === "Left") {
-              tracksRef.current[slotIdx].leftVotes += top.score;
-            } else if (top.categoryName === "Right") {
-              tracksRef.current[slotIdx].rightVotes += top.score;
-            }
-          });
-
-          const currentSlots: [NormalizedLandmark[], NormalizedLandmark[]] = [
-            slot0 ?? [],
-            slot1 ?? [],
-          ];
-
-          const changed = frameHasSignificantChange(
-            currentSlots,
-            lastPushedFrameRef.current,
-            FRAME_CHANGE_THRESHOLD,
-          );
-          const heartbeatDue =
-            now - lastPushedTimestampRef.current >= HEARTBEAT_INTERVAL_MS;
-
-          if (changed || heartbeatDue) {
-            const cloned: [NormalizedLandmark[], NormalizedLandmark[]] = [
-              currentSlots[0].map((p) => ({ ...p })),
-              currentSlots[1].map((p) => ({ ...p })),
-            ];
-            rawTrackFramesRef.current.push({
-              timestamp: currentTime,
-              slots: cloned,
-            });
-            lastPushedFrameRef.current = cloned;
-            lastPushedTimestampRef.current = now;
-          }
+      if (!drawingLayerRef.current) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          drawingLayerRef.current = new DrawingLayer(ctx);
         }
+      }
 
-        if (
-          mode === "practice" &&
-          referenceLandmarks &&
-          referenceLandmarks.length > 0
-        ) {
-          const refFrames = referenceLandmarks;
-          const currentIdx = frameIndexRef.current;
+      const now = performance.now();
+      const frame = engine.detect(video, now, video.currentTime);
 
-          if (currentIdx >= refFrames.length) {
-            frameIndexRef.current = 0;
-            return;
-          }
+      drawingLayerRef.current?.clear(canvas.width, canvas.height);
+      drawingLayerRef.current?.drawAll({
+        leftHand: frame.hands.left?.landmarks ?? [],
+        rightHand: frame.hands.right?.landmarks ?? [],
+        pose: frame.pose?.landmarks ?? [],
+        face: frame.face?.landmarks ?? [],
+      });
 
-          const similarity = frameSimilarity(landmarks, refFrames[currentIdx]);
+      onFrame?.(frame);
+
+      if (
+        (mode === "record" || mode === "translate") &&
+        isRecordingRef.current &&
+        isActive
+      ) {
+        frameRecorderRef.current.addFrame(frame, now);
+      }
+
+      if (
+        mode === "practice" &&
+        referenceLandmarks &&
+        referenceLandmarks.length > 0
+      ) {
+        const currentIdx = frameIndexRef.current;
+
+        if (currentIdx >= referenceLandmarks.length) {
+          frameIndexRef.current = 0;
+        } else {
+          const similarity = frameSimilarity(
+            presentHands(frame),
+            referenceLandmarks[currentIdx],
+          );
           lastFeedbackRef.current = similarity;
 
           const ctx = canvas.getContext("2d");
@@ -359,28 +229,21 @@ const Video = forwardRef<VideoHandle, VideoProps>(
           if (similarity >= feedbackThreshold) {
             frameIndexRef.current = Math.min(
               currentIdx + 1,
-              refFrames.length - 1,
+              referenceLandmarks.length - 1,
             );
           }
         }
       }
 
       animationRef.current = requestAnimationFrame(detectFrameRef.current);
-    }, [
-      handLandmarker,
-      mode,
-      isActive,
-      onLandmarks,
-      referenceLandmarks,
-      feedbackThreshold,
-    ]);
+    }, [mode, isActive, onFrame, referenceLandmarks, feedbackThreshold]);
 
     useEffect(() => {
       detectFrameRef.current = detectFrame;
     }, [detectFrame]);
 
     useEffect(() => {
-      if (stream && handLandmarker) {
+      if (stream && engineReady) {
         frameIndexRef.current = 0;
         lastFeedbackRef.current = null;
         animationRef.current = requestAnimationFrame(detectFrameRef.current);
@@ -393,7 +256,7 @@ const Video = forwardRef<VideoHandle, VideoProps>(
         }
       }
       return () => cancelAnimationFrame(animationRef.current);
-    }, [stream, handLandmarker]);
+    }, [stream, engineReady]);
 
     useEffect(() => {
       frameIndexRef.current = 0;
@@ -412,29 +275,14 @@ const Video = forwardRef<VideoHandle, VideoProps>(
     useImperativeHandle(ref, () => ({
       startRecording() {
         isRecordingRef.current = true;
-        recordedFramesRef.current = [];
-        rawTrackFramesRef.current = [];
-        lastPushedFrameRef.current = null;
-        lastPushedTimestampRef.current = 0;
-        tracksRef.current = freshTracks();
+        frameRecorderRef.current.start();
       },
       stopRecording() {
         isRecordingRef.current = false;
-
-        const [track0, track1] = tracksRef.current;
-        const track0IsLeft =
-          track0.leftVotes + track1.rightVotes >=
-          track0.rightVotes + track1.leftVotes;
-
-        recordedFramesRef.current = rawTrackFramesRef.current.map((f) => ({
-          timestamp: f.timestamp,
-          landmarks: track0IsLeft
-            ? [f.slots[0] ?? [], f.slots[1] ?? []]
-            : [f.slots[1] ?? [], f.slots[0] ?? []],
-        }));
+        frameRecorderRef.current.stop();
       },
       getRecordedFrames() {
-        return recordedFramesRef.current;
+        return frameRecorderRef.current.getFrames();
       },
       async startCamera() {
         if (stream) return;
@@ -456,6 +304,8 @@ const Video = forwardRef<VideoHandle, VideoProps>(
         videoElement.srcObject = null;
         setStream(null);
         isRecordingRef.current = false;
+        frameRecorderRef.current.reset();
+        engineRef.current?.resetTracking();
       } else {
         try {
           setIsLoading(true);
@@ -492,6 +342,8 @@ const Video = forwardRef<VideoHandle, VideoProps>(
       }
     };
 
+    const buttonDisabled = isLoading || !engineReady;
+
     return (
       <div className={`flex flex-col gap-4 p-4 ${className}`}>
         {modelError && (
@@ -524,18 +376,20 @@ const Video = forwardRef<VideoHandle, VideoProps>(
         </div>
         <button
           onClick={toggleCamera}
-          disabled={isLoading}
+          disabled={buttonDisabled}
           className={`px-6 py-3 rounded-lg font-bold text-white transition-colors ${
             stream
               ? "bg-red-500 hover:bg-red-600"
               : "bg-green-500 hover:bg-green-600"
-          } ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+          } ${buttonDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           {isLoading
             ? "جاري التحميل..."
-            : stream
-              ? "إيقاف الكاميرا"
-              : "تشغيل الكاميرا"}
+            : !engineReady
+              ? "جاري تجهيز نظام التتبع..."
+              : stream
+                ? "إيقاف الكاميرا"
+                : "تشغيل الكاميرا"}
         </button>
       </div>
     );
@@ -543,28 +397,5 @@ const Video = forwardRef<VideoHandle, VideoProps>(
 );
 
 Video.displayName = "Video";
-
-function drawResults(
-  result: HandLandmarkerResult,
-  canvas: HTMLCanvasElement,
-  video: HTMLVideoElement,
-) {
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (!result.landmarks) return;
-
-  const drawingUtils = new DrawingUtils(ctx);
-  for (const landmarks of result.landmarks) {
-    drawingUtils.drawConnectors(landmarks, HandLandmarker.HAND_CONNECTIONS, {
-      color: "#00FF00",
-      lineWidth: 5,
-    });
-    drawingUtils.drawLandmarks(landmarks, { color: "#FF0000", lineWidth: 2 });
-  }
-}
 
 export default Video;

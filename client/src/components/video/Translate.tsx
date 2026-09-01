@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import Video, { type VideoHandle } from "./Video";
 import { DIALECTS } from "../../constants/dialects";
 import { apiRequest } from "../../utils/api";
+import type { Landmark } from "../vision/types";
 
 const CAPTURE_DURATION_MS = 3000;
 
@@ -32,33 +33,44 @@ export default function Translate() {
 
       const frames = videoRef.current?.getRecordedFrames();
       if (!frames || frames.length === 0) {
-        setError(
-          "No hand movements detected. Please try again near the camera.",
-        );
+        setError("لم يتم رصد أي حركة. حاول مرة أخرى قرب الكاميرا.");
         return;
       }
 
-      sendForTranslation(frames.map((f) => f.landmarks));
+      const landmarksJson = frames.map((frame) => {
+        const rightHand = frame.hands.right?.landmarks ?? [];
+        const leftHand = frame.hands.left?.landmarks ?? [];
+        return [rightHand, leftHand];
+      });
+
+      const hasHand = landmarksJson.some((frame) =>
+        frame.some((hand) => hand.length > 0),
+      );
+      if (!hasHand) {
+        setError("لم يتم رصد اليد في أي إطار. تأكد من ظهور يدك أمام الكاميرا.");
+        return;
+      }
+
+      sendForTranslation(landmarksJson);
     }, CAPTURE_DURATION_MS);
   };
 
-  const sendForTranslation = async (
-    landmarksJson: ReturnType<
-      VideoHandle["getRecordedFrames"]
-    >[number]["landmarks"][],
-  ) => {
+  const sendForTranslation = async (landmarksJson: Landmark[][][]) => {
     setIsTranslating(true);
     try {
-      const data = await apiRequest<TranslationResult>("/translate/sign-to-text", {
-        method: "POST",
-        body: { dialect, landmarksJson },
-      });
+      const data = await apiRequest<TranslationResult>(
+        "/translate/sign-to-text",
+        {
+          method: "POST",
+          body: { dialect, landmarksJson },
+        },
+      );
 
       setResult(data);
       setHistory((h) => [data, ...h]);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "unknown error occurred during translation");
+      setError(err.message || "حدث خطأ أثناء الترجمة");
     } finally {
       setIsTranslating(false);
     }

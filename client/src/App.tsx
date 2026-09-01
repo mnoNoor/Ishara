@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./layout/Layout";
 import SignRecorder from "./components/video/SignRecorder";
-import Translate from "./components/video/Translate";
+// import Translate from "./components/video/Translate";
+import LiveTranslation from "./pages/LiveTranslation";
 import { useAuth, AuthProvider } from "./context/AuthContext";
 
 import Home from "./pages/Home";
@@ -35,10 +36,11 @@ function App() {
             <Route index element={<Home />} />
             <Route path="about" element={<About />} />
             <Route path="contact" element={<Contact />} />
-            <Route path="translate" element={<Translate />} />
+            {/* <Route path="translate" element={<Translate />} /> */}
+            <Route path="live-translation" element={<LiveTranslation />} />
             <Route path="dictionary" element={<Dictionary />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            <Route path="login" element={<Login />} />
+            <Route path="register" element={<Register />} />
             <Route
               path="sign-recorder"
               element={

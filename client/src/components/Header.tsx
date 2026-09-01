@@ -34,6 +34,7 @@ export default function Header() {
           </NavLink>
         </li>
       )}
+      {/*
       <li>
         <NavLink
           to="/translate"
@@ -41,6 +42,25 @@ export default function Header() {
           onClick={() => setMobileMenuOpen(false)}
         >
           ترجمة إشارة
+        </NavLink>
+      </li>
+      */}
+      <li>
+        <NavLink
+          to="/live-translation"
+          className="nav-link"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          ترجمة مباشرة
+        </NavLink>
+      </li>
+      <li>
+        <NavLink
+          to="/dictionary"
+          className="nav-link"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          القاموس
         </NavLink>
       </li>
       <li>

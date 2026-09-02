@@ -146,7 +146,7 @@ export default function About() {
               سجّل إشارة جديدة
             </Link>
             <Link
-              to="/translate"
+              to="/live-translation"
               className="inline-flex items-center justify-center rounded-2xl border border-slate-300 px-6 py-4 text-slate-900 font-semibold hover:bg-slate-100 transition"
             >
               جرّب الترجمة الآن

@@ -5,8 +5,8 @@ Technical reference for how a sign becomes text in Ishara: capture, transport, m
 ## Table of Contents
 
 1. [Architecture Overview](#1-architecture-overview)
-2. [Translation Pipeline (Timed Capture)](#2-translation-pipeline-timed-capture)
-3. [Live Translation Pipeline (WebSocket)](#3-live-translation-pipeline-websocket)
+2. [Translation Pipeline (Timed Capture, Disabled)](#2-translation-pipeline-timed-capture-disabled)
+3. [Live Translation Pipeline (WebSocket, Current)](#3-live-translation-pipeline-websocket-current)
 4. [Sample Recording Pipeline](#4-sample-recording-pipeline)
 5. [Component Reference](#5-component-reference)
 6. [Database Schema](#6-database-schema)
@@ -20,44 +20,37 @@ Technical reference for how a sign becomes text in Ishara: capture, transport, m
 
 ## 1. Architecture Overview
 
+**Current: live translation over WebSocket**
+
 ```mermaid
 graph TB
-    subgraph Client["Client (React/TypeScript/Vite)"]
-        A["Webcam Input"] --> B["MediaPipe Vision<br/>(Hand Landmarker)"]
-        B --> C["Hand Tracking<br/>(HandTracker)"]
-        C --> D["Frame Recording<br/>(FrameRecorder)"]
-        D --> E["Landmark Sequence<br/>(landmarksJson)"]
-    end
+    A["Webcam Input"] --> B["MediaPipe Vision (Hand Landmarker)"]
+    B --> C["Hand Tracking (HandTracker)"]
+    C --> D["WebSocket session"]
+    D --> E["Pose vector per frame"]
+    E --> F["Hold Detector"]
+    F -->|hold confirmed| G["Beam Match vs. dialect trie"]
+    F -->|idle timeout, no clear hold| H["DTW fallback, sliding window"]
+    G --> I["Word + Arabic text + confidence"]
+    H --> I
+```
 
-    subgraph Transport["Transport"]
-        E --> F1["POST /api/translate/sign-to-text<br/>(timed capture)"]
-        E --> F2["WebSocket session<br/>(live translation)"]
-        E --> F3["POST /admin/signs/record<br/>(sample recording)"]
-    end
+**Disabled, kept for reference: one-shot HTTP translation**
 
-    subgraph Server["Server (Node.js/Express/TypeScript)"]
-        F1 --> G["Validation"]
-        F2 --> G
-        G --> H["Normalization<br/>(126-D vectors)"]
-    end
+The `/translate` route and `Translate.tsx` are currently commented out in `client/src/App.tsx`, so this flow isn't reachable from the app while the live pipeline above is developed further. The endpoint (`POST /api/translate/sign-to-text`) and its DTW + KNN matching logic still exist server-side and are documented in full in [Section 2](#2-translation-pipeline-timed-capture-disabled), in case it's re-enabled or repurposed later.
 
-    subgraph Matching["Matching"]
-        H --> I["DTW<br/>(Sakoe-Chiba band)"]
-        I --> J["KNN Vote<br/>(K = 5)"]
-        J --> K["Confidence"]
-    end
+**Sample recording (always active, independent of translation mode)**
 
-    subgraph Database["Database (PostgreSQL)"]
-        K --> L["Sample Library<br/>(by dialect)"]
-        F3 --> L
-    end
-
-    L --> M["Word + Arabic Text<br/>+ Confidence"]
+```mermaid
+graph LR
+    A["Webcam Input"] --> B["MediaPipe Vision"] --> C["FrameRecorder"] --> D["POST /api/admin/signs/record"] --> E[("word / sign_variants / sample tables")]
 ```
 
 ---
 
-## 2. Translation Pipeline (Timed Capture)
+## 2. Translation Pipeline (Timed Capture, Disabled)
+
+> **Status: disabled.** The `translate` route and the `Translate.tsx` component are commented out in `client/src/App.tsx` while the live-translation flow (Section 3) is developed further. The backend endpoint and matching algorithm below are unchanged and still work — this section is kept as a technical reference for whenever the flow is re-enabled.
 
 ### 2.1 Capture & tracking (client)
 
@@ -97,7 +90,7 @@ normalized_x = (x - wrist_x) / scale
 scale = distance(wrist, middle_mcp)
 ```
 
-`normalizeFrame()` concatenates both hands into a 126-D vector per frame.
+`frameToVector()` concatenates both hands into a 126-D vector per frame.
 
 ### 2.4 Sample loading & caching
 
@@ -121,9 +114,9 @@ confidence = voteShare * exp(-averageDistance) * 100   // 0-100
 
 ---
 
-## 3. Live Translation Pipeline (WebSocket)
+## 3. Live Translation Pipeline (WebSocket, Current)
 
-`liveTranslateService.ts` (`LiveTranslateSession`) streams landmarks over a WebSocket instead of a single timed HTTP request, reusing the same capture and normalization steps as above.
+This is the only active translation mode right now. `liveTranslateService.ts` (`LiveTranslateSession`) streams landmarks over a WebSocket instead of a single timed HTTP request, reusing the same capture and normalization steps as above.
 
 - **Hold Detector** (`holdDetector.ts`) — flags moments where hand motion drops below a threshold, marking likely word boundaries.
 - **Hold Beam Matcher** (`signTrie.ts`) — indexes samples by their hold sequence in a trie; at each hold, it attempts to match the frames accumulated so far and can return a result mid-sign.
@@ -143,9 +136,9 @@ type LiveTranslateEvent =
 ## 4. Sample Recording Pipeline
 
 1. **Record** — `SignRecorder.tsx` uses the same capture/tracking flow as translation.
-2. **Label** — Arabic text, a transliterated word id, dialect, optional category, and a difficulty rating (1-5).
+2. **Label** — the recorder types the Arabic text; a Latin `word` id is derived automatically by transliteration. `dialect`, `category`, and `difficulty` are currently sent with fixed defaults (single dialect, `general`, `beginner`) — there's no picker for them in the current UI, though the schema already supports per-dialect variants and the `category`/`difficulty` enums (see the note in [Database Schema](#6-database-schema)).
 3. **Submit** — `POST /api/admin/signs/record`, JWT-authenticated, normalized into the same 126-D vectors.
-4. **Store** — across the `words`, `signVariants`, and `samples` tables (see [Database Schema](#6-database-schema)).
+4. **Store** — across the `word`, `sign_variants`, and `sample` tables (see [Database Schema](#6-database-schema)).
 5. **Invalidate** — the affected dialect's cache is cleared so the next translation request picks up the new sample.
 
 ---
@@ -299,14 +292,15 @@ interface SegmentedTemplate {
   variantId: number;
   word: string;
   arabicText: string;
-  holdSequence: HoldSignal[]; // moments of stillness
-  framePaths: number[][]; // frame indices between holds
+  holds: number[][]; // pose vector captured at each detected hold, in order
 }
 ```
 
 ---
 
 ## 8. Matching Algorithms (DTW & KNN)
+
+> There are two separate DTW implementations in the codebase: `translateService.ts` (below), used by the disabled one-shot endpoint together with KNN voting, and `dtwMatcher.ts`, used as the live pipeline's fallback (Section 3) with no voting step and a fixed band radius (default 15) rather than a percentage of sequence length. The two aren't interchangeable — this section documents `translateService.ts`'s version.
 
 ### Dynamic Time Warping
 
@@ -342,9 +336,13 @@ This combination works with very few samples per word, needs no training step, a
 
 ## 9. Error Handling
 
+These apply to the HTTP endpoints (translation and recording):
+
 - **400** — invalid dialect, empty landmark sequence, or missing fields (caught by validation middleware).
 - **404** — no samples found for the requested dialect.
 - **500** — database, cache, or unexpected processing failures.
+
+The live (WebSocket) session has no HTTP status codes — it emits a `translate:error` event with a message instead (e.g. missing dialect data, a frame processing exception).
 
 ---
 
@@ -358,6 +356,7 @@ This combination works with very few samples per word, needs no training step, a
 
 ## 11. Future Work
 
+- Sentence-level data: a planned table for full sentences, alongside the existing word/variant/sample structure.
 - Hybrid recognition: LSTM/Transformer models for high-resource words, with DTW + KNN kept for the long tail and newly added signs.
 - Earlier, more granular partial results in the live pipeline (streaming holds are still coarse).
 - Better handling of continuous signs that don't produce a clear hold.

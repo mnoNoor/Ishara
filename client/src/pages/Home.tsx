@@ -67,7 +67,7 @@ export default function Home() {
               🖐️ سجّل إشارة جديدة
             </Link>
             <Link
-              to="/translate"
+              to="/llive-translation"
               className="px-8 py-3 bg-white text-blue-600 border border-blue-600 rounded-xl font-semibold hover:bg-blue-50 transition"
             >
               🌐 جرّب الترجمة

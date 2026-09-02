@@ -52,7 +52,7 @@ client/
     │   │
     │   ├── video/           # Video processing components
     │   │   ├── SignRecorder.tsx  # Sign recording functionality
-    │   │   ├── Translate.tsx     # Translation interface
+    │   │   ├── Translate.tsx     # One-shot translation UI — not currently routed in App.tsx (disabled)
     │   │   └── Video.tsx         # Video capture component
     │   │
     │   └── vision/          # Computer vision engine and utilities
@@ -88,12 +88,13 @@ client/
     │   └── Layout.tsx       # Main layout wrapper
     │
     ├── pages/               # Page components (routes)
-    │   ├── About.tsx        # About page
-    │   ├── Contact.tsx      # Contact page
-    │   ├── Dictionary.tsx   # Sign language dictionary page
-    │   ├── Home.tsx         # Home/landing page
-    │   ├── Login.tsx        # Login page
-    │   └── Register.tsx     # Registration page
+    │   ├── About.tsx            # About page
+    │   ├── Contact.tsx          # Contact page
+    │   ├── Dictionary.tsx       # Sign language dictionary page
+    │   ├── Home.tsx             # Home/landing page
+    │   ├── LiveTranslation.tsx  # Live (WebSocket) translation page — the current, active translation UI
+    │   ├── Login.tsx            # Login page
+    │   └── Register.tsx         # Registration page
     │
     ├── types/               # TypeScript type definitions
     │   ├── auth.types.ts    # Authentication-related types
@@ -115,8 +116,7 @@ server/
 ├── .env.example              # Example environment variables
 │
 └── src/                     # Source code
-    ├── index.ts             # Application entry point / server setup
-    ├── ws.ts                # WebSocket configuration/handlers
+    ├── index.ts             # Application entry point: Express + Socket.IO setup
     │
     ├── controllers/         # Request handlers (business logic)
     │   ├── adminController.ts       # Admin operations
@@ -141,7 +141,14 @@ server/
     │   └── translateRouter.ts    # Translation endpoints
     │
     ├── services/            # Business logic services
-    │   └── translateService.ts   # Translation service implementation
+    │   ├── translateService.ts       # One-shot translation: normalization + DTW/KNN
+    │   ├── liveTranslateService.ts   # Live WebSocket session lifecycle: hold coordination, event emission
+    │   ├── signTrie.ts               # Builds the hold-indexed trie and matches against it
+    │   └── vision/                   # Server-side landmark processing for live translation
+    │       ├── holdDetector.ts       # Detects stillness/hold events
+    │       ├── poseVector.ts         # Converts a frame into a normalized pose vector
+    │       ├── dtwMatcher.ts         # DTW with Sakoe-Chiba banding (live fallback matcher)
+    │       └── frameDistance.ts      # Euclidean distance between frame vectors
     │
     ├── utils/               # Utility functions
     │   └── jwt.ts           # JWT token generation/verification utilities

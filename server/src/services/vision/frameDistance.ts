@@ -39,7 +39,6 @@ function calculateModalChange(
   const currentPresent = current !== null;
   const previousPresent = previous !== null;
 
-  // ظهور/اختفاء اليد أو الوجه فجأة = تغيّر جوهري، مو صفر
   if (currentPresent !== previousPresent) {
     return { distance: Infinity, available: true };
   }
@@ -52,11 +51,6 @@ function calculateModalChange(
   return { distance, available: true };
 }
 
-/**
- * نفس فكرة calculateFrameChange في client/.../FrameRecorder.ts، بس نسخة
- * مستقلة تشتغل على السيرفر. نستخدمها هنا عكسياً: مو لتصفية فريمات متكررة
- * عند التسجيل، بل لكشف متى تستمر عدة فريمات متتالية شبه ثابتة (= hold).
- */
 export function frameDistance(current: Frame, previous: Frame): number {
   const leftHand = calculateModalChange(
     current.hands.left?.landmarks ?? null,

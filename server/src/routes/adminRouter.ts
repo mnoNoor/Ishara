@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { recordSign } from "../controllers/adminController";
-import { recordSignSchema } from "../validation/recordSignSchema";
-import { validate } from "../middleware/validate";
-import { authMiddleware, roleMiddleware } from "../middleware/auth";
+import { recordSign } from "../controllers/adminController.js";
+import { recordSignSchema } from "../validation/recordSignSchema.js";
+import { validate } from "../middleware/validate.js";
+import { authMiddleware, roleMiddleware } from "../middleware/auth.js";
 const router = Router();
 
 router.post(

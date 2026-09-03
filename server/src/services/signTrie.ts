@@ -1,15 +1,16 @@
 import NodeCache from "node-cache";
 import { eq } from "drizzle-orm";
-import { db } from "../db/db";
-import { sample, signVariants, words } from "../db/schema";
-import type { Sequence } from "../db/db.types";
-import { HoldDetector } from "./vision/holdDetector";
-import { frameToPoseVector } from "./vision/poseVector";
-import type { DtwTemplate } from "./vision/dtwMatcher";
+
+import { db } from "../db/db.js";
+import { sample, signVariants, words } from "../db/schema.js";
+import type { Sequence } from "../db/db.types.js";
+import { HoldDetector } from "./vision/holdDetector.js";
+import { frameToPoseVector } from "./vision/poseVector.js";
+import type { DtwTemplate } from "./vision/dtwMatcher.js";
 
 const cache = new NodeCache({ stdTTL: 3600 });
 
-const MIN_HOLDS_FOR_TRIE = 2;
+const MIN_HOLDS_FOR_TRIE = 1;
 const MAX_DTW_TEMPLATE_FRAMES = 60;
 
 export interface SegmentedTemplate {
@@ -96,6 +97,15 @@ export async function buildDialectIndex(
 
   console.log(
     `🌳 فهرس "${dialect}": ${segmented.length} إشارة مقسّمة إلى holds، ${dtwFallback.length} على مسار DTW الاحتياطي`,
+  );
+
+  console.log(
+    "Beam templates:",
+    segmented.map((s) => `${s.word} (${s.holds.length} holds)`),
+  );
+  console.log(
+    "DTW fallback templates:",
+    dtwFallback.map((s) => `${s.word} (${s.vectors.length} frames)`),
   );
 
   return index;

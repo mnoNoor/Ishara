@@ -1,4 +1,4 @@
-import type { Frame, Landmark } from "../../db/db.types";
+import type { Frame, Landmark } from "../../db/db.types.js";
 
 const LANDMARK_COUNT = 21;
 const COORDS_PER_POINT = 3;

@@ -1,4 +1,4 @@
-import type { Frame, Landmark } from "../../db/db.types";
+import type { Frame, Landmark } from "../../db/db.types.js";
 
 const HAND_WEIGHT = 0.65;
 const POSE_WEIGHT = 0.15;

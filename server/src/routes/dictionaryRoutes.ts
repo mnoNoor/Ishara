@@ -2,7 +2,7 @@ import { Router } from "express";
 import {
   getDictionary,
   getDictionaryStats,
-} from "../controllers/dictionaryController";
+} from "../controllers/dictionaryController.js";
 
 const router = Router();
 

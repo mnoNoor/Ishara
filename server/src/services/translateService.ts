@@ -1,7 +1,8 @@
 import NodeCache from "node-cache";
-import { db } from "../db/db";
-import { sample, signVariants, words } from "../db/schema";
 import { eq, sql } from "drizzle-orm";
+
+import { db } from "../db/db.js";
+import { sample, signVariants, words } from "../db/schema.js";
 
 type Landmark = { x: number; y: number; z?: number };
 type Frame = Landmark[][];

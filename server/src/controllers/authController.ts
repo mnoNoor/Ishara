@@ -1,16 +1,17 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import { eq } from "drizzle-orm";
-import { db } from "../db/db";
-import { user } from "../db/schema";
+
+import { db } from "../db/db.js";
+import { user } from "../db/schema.js";
 import {
   sendToken,
   clearTokens,
   verifyRefreshToken,
   setAccessTokenCookie,
   JwtPayload,
-} from "../utils/jwt";
-import { AuthRequest } from "../middleware/auth";
+} from "../utils/jwt.js";
+import { AuthRequest } from "../middleware/auth.js";
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {

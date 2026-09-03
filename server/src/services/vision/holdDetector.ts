@@ -1,6 +1,6 @@
-import type { Frame } from "../../db/db.types";
-import { frameDistance } from "./frameDistance";
-import { frameToPoseVector } from "./poseVector";
+import type { Frame } from "../../db/db.types.js";
+import { frameDistance } from "./frameDistance.js";
+import { frameToPoseVector } from "./poseVector.js";
 
 export interface HoldDetectorOptions {
   stillThreshold?: number;

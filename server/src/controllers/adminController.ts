@@ -1,9 +1,10 @@
 import { Response } from "express";
-import { words, signVariants, sample, signRecorders } from "../db/schema";
-import { db } from "../db/db";
 import { eq, and, sql } from "drizzle-orm";
-import { clearTranslationCache } from "../services/translateService";
-import { AuthRequest } from "../middleware/auth";
+
+import { db } from "../db/db.js";
+import { words, signVariants, sample, signRecorders } from "../db/schema.js";
+import { clearTranslationCache } from "../services/translateService.js";
+import { AuthRequest } from "../middleware/auth.js";
 
 export async function recordSign(req: AuthRequest, res: Response) {
   try {

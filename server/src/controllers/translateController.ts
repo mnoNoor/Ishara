@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import {
   findBestMatch,
   clearTranslationCache,
-} from "../services/translateService";
+} from "../services/translateService.js";
 
 export async function signToText(req: Request, res: Response) {
   try {

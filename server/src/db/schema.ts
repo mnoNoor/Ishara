@@ -12,7 +12,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
-import type { Sequence } from "./db.types";
+import type { Sequence } from "./db.types.js";
 
 export const categoryEnum = pgEnum("category", [
   "general",

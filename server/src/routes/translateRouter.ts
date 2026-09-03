@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { signToText, clearCache } from "../controllers/translateController";
-import { translateSchema } from "../validation/translateSchema";
-import { validate } from "../middleware/validate";
-import { authMiddleware, roleMiddleware } from "../middleware/auth";
+import { signToText, clearCache } from "../controllers/translateController.js";
+import { translateSchema } from "../validation/translateSchema.js";
+import { validate } from "../middleware/validate.js";
+import { authMiddleware, roleMiddleware } from "../middleware/auth.js";
 
 const router = Router();
 

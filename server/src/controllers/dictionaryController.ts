@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 import { count } from "drizzle-orm";
-import { words, signVariants } from "../db/schema";
-import { db } from "../db/db";
+
+import { words, signVariants } from "../db/schema.js";
+import { db } from "../db/db.js";
 
 export const getDictionary = async (req: Request, res: Response) => {
   try {

@@ -1,12 +1,12 @@
-import type { Frame } from "../db/db.types";
-import { HoldDetector, type HoldSignal } from "./vision/holdDetector";
-import { frameToPoseVector } from "./vision/poseVector";
-import { DtwFallbackMatcher, type DtwTemplate } from "./vision/dtwMatcher";
+import type { Frame } from "../db/db.types.js";
+import { HoldDetector, type HoldSignal } from "./vision/holdDetector.js";
+import { frameToPoseVector } from "./vision/poseVector.js";
+import { DtwFallbackMatcher, type DtwTemplate } from "./vision/dtwMatcher.js";
 import {
   buildDialectIndex,
   HoldBeamMatcher,
   type SegmentedTemplate,
-} from "./signTrie";
+} from "./signTrie.js";
 
 const IDLE_RESET_MS = 1200;
 

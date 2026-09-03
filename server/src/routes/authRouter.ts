@@ -5,10 +5,10 @@ import {
   logout,
   refreshToken,
   getCurrentUser,
-} from "../controllers/authController";
-import { authMiddleware } from "../middleware/auth";
-import { validate } from "../middleware/validate";
-import { loginSchema, registerSchema } from "../validation/authSchema";
+} from "../controllers/authController.js";
+import { authMiddleware } from "../middleware/auth.js";
+import { validate } from "../middleware/validate.js";
+import { loginSchema, registerSchema } from "../validation/authSchema.js";
 
 const router = Router();
 

@@ -8,12 +8,12 @@ import { createServer } from "node:http";
 import cookieParser from "cookie-parser";
 import { Server } from "socket.io";
 
-import authRoutes from "./routes/authRouter";
-import adminRoutes from "./routes/adminRouter";
-import translateRoutes from "./routes/translateRouter";
-import dictionaryRoutes from "./routes/dictionaryRoutes";
-import { LiveTranslateSession } from "./services/liveTranslateService";
-import type { Frame } from "./db/db.types";
+import authRoutes from "./routes/authRouter.js";
+import adminRoutes from "./routes/adminRouter.js";
+import translateRoutes from "./routes/translateRouter.js";
+import dictionaryRoutes from "./routes/dictionaryRoutes.js";
+import { LiveTranslateSession } from "./services/liveTranslateService.js";
+import type { Frame } from "./db/db.types.js";
 
 const app = express();
 const server = createServer(app);

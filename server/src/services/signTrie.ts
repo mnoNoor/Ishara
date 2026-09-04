@@ -7,10 +7,10 @@ import type { Sequence } from "../db/db.types.js";
 import { HoldDetector } from "./vision/holdDetector.js";
 import { frameToPoseVector } from "./vision/poseVector.js";
 import type { DtwTemplate } from "./vision/dtwMatcher.js";
+import type { SingleHoldTemplate } from "./vision/singleHoldMatcher.js";
 
 const cache = new NodeCache({ stdTTL: 3600 });
-
-const MIN_HOLDS_FOR_TRIE = 1;
+const MIN_HOLDS_FOR_BEAM = 2;
 const MAX_DTW_TEMPLATE_FRAMES = 60;
 
 export interface SegmentedTemplate {
@@ -21,6 +21,7 @@ export interface SegmentedTemplate {
 }
 
 export interface DialectIndex {
+  singleHold: SingleHoldTemplate[];
   segmented: SegmentedTemplate[];
   dtwFallback: DtwTemplate[];
 }
@@ -64,6 +65,7 @@ export async function buildDialectIndex(
     .innerJoin(words, eq(signVariants.signId, words.id))
     .where(eq(signVariants.dialect, dialect));
 
+  const singleHold: SingleHoldTemplate[] = [];
   const segmented: SegmentedTemplate[] = [];
   const dtwFallback: DtwTemplate[] = [];
 
@@ -71,7 +73,14 @@ export async function buildDialectIndex(
     const sequence = s.landmarks as Sequence;
     const holds = segmentSequence(sequence);
 
-    if (holds.length >= MIN_HOLDS_FOR_TRIE) {
+    if (holds.length === 1) {
+      singleHold.push({
+        variantId: s.variantId,
+        word: s.word,
+        arabicText: s.arabicText,
+        vector: holds[0],
+      });
+    } else if (holds.length >= MIN_HOLDS_FOR_BEAM) {
       segmented.push({
         variantId: s.variantId,
         word: s.word,
@@ -79,6 +88,11 @@ export async function buildDialectIndex(
         holds,
       });
     } else {
+      if (holds.length === 0) {
+        console.warn(
+          `⚠️ عينة "${s.word}" (variant ${s.variantId}) ما سجّلت ولا hold — على الأغلب تسجيل مهتز يستحق إعادة، استُخدمت كـ DTW fallback مؤقتاً.`,
+        );
+      }
       const vectors = downsample(
         sequence.map(frameToPoseVector),
         MAX_DTW_TEMPLATE_FRAMES,
@@ -92,13 +106,17 @@ export async function buildDialectIndex(
     }
   }
 
-  const index: DialectIndex = { segmented, dtwFallback };
+  const index: DialectIndex = { singleHold, segmented, dtwFallback };
   cache.set(cacheKey, index);
 
   console.log(
-    `🌳 فهرس "${dialect}": ${segmented.length} إشارة مقسّمة إلى holds، ${dtwFallback.length} على مسار DTW الاحتياطي`,
+    `🌳 فهرس "${dialect}": ${singleHold.length} حرف مفرد (single-hold)، ${segmented.length} إشارة متعددة الـ holds، ${dtwFallback.length} على مسار DTW الاحتياطي`,
   );
 
+  console.log(
+    "Single-hold templates:",
+    singleHold.map((s) => s.word),
+  );
   console.log(
     "Beam templates:",
     segmented.map((s) => `${s.word} (${s.holds.length} holds)`),
@@ -154,6 +172,10 @@ export class HoldBeamMatcher {
     this.pool = pool;
     this.opts = { ...DEFAULT_BEAM_OPTIONS, ...options };
     this.alive = pool;
+  }
+
+  hasCandidates(): boolean {
+    return this.pool.length > 0;
   }
 
   reset(): void {

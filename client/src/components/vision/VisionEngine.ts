@@ -22,6 +22,7 @@ import {
 import { HandTracker } from "./tracking/HandTracker";
 import { selectLandmarks } from "./processing/landmarkFilters";
 import { FACE_LANDMARK_SUBSET } from "./processing/faceLandmarkSubset";
+import { POSE_LANDMARK_SUBSET } from "./processing/poseLandmarkSubset";
 
 import type { VisionEngineOptions, VisionFrame } from "./types";
 
@@ -89,8 +90,14 @@ export class VisionEngine {
       pose:
         pose.landmarks.length > 0
           ? {
-              landmarks: pose.landmarks[0] ?? [],
-              worldLandmarks: pose.worldLandmarks[0] ?? [],
+              landmarks: selectLandmarks(
+                pose.landmarks[0] ?? [],
+                POSE_LANDMARK_SUBSET,
+              ),
+              worldLandmarks: selectLandmarks(
+                pose.worldLandmarks[0] ?? [],
+                POSE_LANDMARK_SUBSET,
+              ),
             }
           : null,
 

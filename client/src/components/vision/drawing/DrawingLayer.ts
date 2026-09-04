@@ -1,8 +1,4 @@
-import {
-  DrawingUtils,
-  HandLandmarker,
-  PoseLandmarker,
-} from "@mediapipe/tasks-vision";
+import { DrawingUtils, HandLandmarker } from "@mediapipe/tasks-vision";
 import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 
 import type {
@@ -12,9 +8,32 @@ import type {
   Landmark,
 } from "../types";
 
+import { selectLandmarks } from "../processing/landmarkFilters";
+
+import {
+  POSE_SUBSET_LEFT_SHOULDER,
+  POSE_SUBSET_RIGHT_SHOULDER,
+  POSE_SUBSET_LEFT_HIP,
+  POSE_SUBSET_RIGHT_HIP,
+} from "../processing/poseLandmarkSubset";
+
 function toNormalized(landmarks: Landmark[]): NormalizedLandmark[] {
   return landmarks.map(({ x, y, z }) => ({ x, y, z, visibility: 1 }));
 }
+
+const POSE_SUBSET_CONNECTIONS: { start: number; end: number }[] = [
+  { start: POSE_SUBSET_LEFT_SHOULDER, end: POSE_SUBSET_RIGHT_SHOULDER },
+  { start: POSE_SUBSET_LEFT_SHOULDER, end: POSE_SUBSET_LEFT_HIP },
+  { start: POSE_SUBSET_RIGHT_SHOULDER, end: POSE_SUBSET_RIGHT_HIP },
+  { start: POSE_SUBSET_LEFT_HIP, end: POSE_SUBSET_RIGHT_HIP },
+];
+
+const POSE_DRAWN_LANDMARK_INDICES = [
+  POSE_SUBSET_LEFT_SHOULDER,
+  POSE_SUBSET_RIGHT_SHOULDER,
+  POSE_SUBSET_LEFT_HIP,
+  POSE_SUBSET_RIGHT_HIP,
+];
 
 export class DrawingLayer {
   private readonly utils: DrawingUtils;
@@ -46,12 +65,17 @@ export class DrawingLayer {
 
     const normalizedPose = toNormalized(pose);
 
-    this.utils.drawConnectors(normalizedPose, PoseLandmarker.POSE_CONNECTIONS, {
+    this.utils.drawConnectors(normalizedPose, POSE_SUBSET_CONNECTIONS, {
       color: "#00FFFF",
       lineWidth: 3,
     });
 
-    this.utils.drawLandmarks(normalizedPose, {
+    const drawnLandmarks = selectLandmarks(
+      normalizedPose,
+      POSE_DRAWN_LANDMARK_INDICES,
+    );
+
+    this.utils.drawLandmarks(drawnLandmarks, {
       color: "#FFFFFF",
       lineWidth: 1,
     });

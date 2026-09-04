@@ -14,13 +14,10 @@ export function cloneWorldLandmarks(landmarks: Landmark[]): Landmark[] {
   }));
 }
 
-export function selectLandmarks(
-  landmarks: NormalizedLandmark[],
-  indices: number[],
-) {
+export function selectLandmarks<T>(landmarks: T[], indices: number[]): T[] {
   return indices
     .map((index) => landmarks[index])
-    .filter((landmark): landmark is NormalizedLandmark => Boolean(landmark));
+    .filter((landmark): landmark is T => Boolean(landmark));
 }
 
 export function normalizeLandmarks(landmarks: NormalizedLandmark[]) {

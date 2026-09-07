@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import Video, { type VideoHandle } from "./Video";
 import { transliterate } from "transliteration";
 import { DIALECTS } from "../../constants/dialects";
@@ -15,6 +15,12 @@ export default function SignRecorder() {
     text: string;
     type: "success" | "error";
   } | null>(null);
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [message]);
 
   const handleStartRecording = () => {
     videoRef.current?.startRecording();
@@ -86,11 +92,13 @@ export default function SignRecorder() {
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
       {message && (
         <div
-          className={`p-3 rounded-lg text-center text-sm font-medium ${
-            message.type === "success"
-              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-              : "bg-red-50 text-red-700 border border-red-200"
-          }`}
+          className={`fixed top-20 left-1/2 -translate-x-1/2 z-60
+    px-4 py-3 rounded-lg text-center text-sm font-medium shadow-lg
+    animate-in fade-in slide-in-from-top-2 duration-300 ${
+      message.type === "success"
+        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+        : "bg-red-50 text-red-700 border border-red-200"
+    }`}
         >
           {message.text}
         </div>

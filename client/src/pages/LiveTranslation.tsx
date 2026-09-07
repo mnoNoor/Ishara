@@ -160,19 +160,22 @@ export default function LiveTranslation() {
                 : "جاري الاتصال..."}
           </div>
         )}
-      </div>
 
-      {partial && (
-        <div className="p-5 rounded-xl bg-blue-50 border border-blue-200 text-center space-y-2">
-          <p className="text-sm text-blue-700">جاري رصد الإشارة</p>
-          <p className="text-2xl font-bold text-blue-800" dir="rtl">
-            {partial.arabicText}
-          </p>
-          <p className="text-xs text-blue-600">
-            نسبة الثقة: {partial.confidence}%
-          </p>
+        <div
+          className={`absolute bottom-3 inset-x-0 flex justify-center px-3 transition-all duration-200 ease-out ${
+            partial
+              ? "opacity-100 translate-y-0"
+              : "opacity-0 translate-y-1 pointer-events-none"
+          }`}
+        >
+          <div
+            className="px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-sm text-white text-sm font-medium"
+            dir="rtl"
+          >
+            {partial?.arabicText}
+          </div>
         </div>
-      )}
+      </div>
 
       <div className="flex justify-center">
         {!isLive ? (
@@ -197,18 +200,6 @@ export default function LiveTranslation() {
       </p>
 
       <div className="p-4 rounded-lg border border-gray-200 bg-white space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-700">
-            سجل الكلمات المترجمة
-          </h3>
-          <button
-            onClick={() => setHistory([])}
-            disabled={history.length === 0}
-            className="text-xs text-red-600 hover:underline disabled:opacity-50"
-          >
-            تفريغ السجل
-          </button>
-        </div>
         <div className="p-4 rounded-lg border border-gray-200 bg-white space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-gray-700">

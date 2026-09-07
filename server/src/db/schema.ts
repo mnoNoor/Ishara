@@ -74,6 +74,7 @@ export const user = pgTable("user", {
     mode: "date",
   }).defaultNow(),
 });
+
 export const signVariants = pgTable(
   "sign_variants",
   {

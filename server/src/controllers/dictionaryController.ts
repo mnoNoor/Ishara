@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { count } from "drizzle-orm";
+import { count, sum } from "drizzle-orm";
 
 import { words, signVariants } from "../db/schema.js";
 import { db } from "../db/db.js";
@@ -19,12 +19,12 @@ export const getDictionaryStats = async (req: Request, res: Response) => {
   try {
     const [wordStats] = await db.select({ count: count() }).from(words);
     const [variantStats] = await db
-      .select({ count: count() })
+      .select({ totalSamples: sum(signVariants.sampleCount) })
       .from(signVariants);
 
     res.json({
       signs: wordStats.count,
-      variants: variantStats.count,
+      variants: variantStats.totalSamples,
       accuracy: 92.8,
     });
   } catch (error) {

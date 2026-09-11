@@ -3,7 +3,8 @@ import { frameDistance } from "./frameDistance.js";
 import { frameToPoseVector } from "./poseVector.js";
 
 export interface HoldDetectorOptions {
-  stillThreshold?: number;
+  holdStillThreshold?: number;
+  transitionThreshold?: number;
   minHoldFrames?: number;
 }
 
@@ -14,7 +15,8 @@ export interface HoldEvent {
 }
 
 const DEFAULT_OPTIONS: Required<HoldDetectorOptions> = {
-  stillThreshold: 0.02,
+  holdStillThreshold: 0.02,
+  transitionThreshold: 0.06,
   minHoldFrames: 6,
 };
 
@@ -25,6 +27,7 @@ export type HoldSignal =
   | { type: "confirmed"; event: HoldEvent }
   | { type: "continuing" }
   | { type: "ended" }
+  | { type: "moving" }
   | { type: "none" };
 
 export class HoldDetector {
@@ -49,15 +52,25 @@ export class HoldDetector {
     const dt = Math.max(timestamp - this.previousTimestamp, MIN_DT_MS);
     const rawChange = frameDistance(frame, this.previousFrame);
     const normalizedChange = rawChange * (REFERENCE_DT_MS / dt);
-    const isStill = normalizedChange < this.opts.stillThreshold;
+
+    const isStill = normalizedChange < this.opts.holdStillThreshold;
+    const isTransition = normalizedChange >= this.opts.transitionThreshold;
 
     this.previousFrame = frame;
     this.previousTimestamp = timestamp;
 
+    if (this.inHold) {
+      if (isTransition) {
+        this.inHold = false;
+        this.stillStreak = [frame];
+        return { type: "ended" };
+      }
+      return { type: "continuing" };
+    }
+
     if (isStill) {
       this.stillStreak.push(frame);
-
-      if (!this.inHold && this.stillStreak.length >= this.opts.minHoldFrames) {
+      if (this.stillStreak.length >= this.opts.minHoldFrames) {
         this.inHold = true;
         const midFrame =
           this.stillStreak[Math.floor(this.stillStreak.length / 2)];
@@ -70,13 +83,11 @@ export class HoldDetector {
           },
         };
       }
-      return this.inHold ? { type: "continuing" } : { type: "none" };
+      return { type: "none" };
     }
 
-    const wasHold = this.inHold;
     this.stillStreak = [frame];
-    this.inHold = false;
-    return wasHold ? { type: "ended" } : { type: "none" };
+    return isTransition ? { type: "moving" } : { type: "none" };
   }
 
   reset(): void {

@@ -8,6 +8,10 @@ import { HoldDetector } from "./vision/holdDetector.js";
 import { frameToPoseVector } from "./vision/poseVector.js";
 import type { DtwTemplate } from "./vision/dtwMatcher.js";
 import type { SingleHoldTemplate } from "./vision/singleHoldMatcher.js";
+import {
+  detectPeriodicMotion,
+  type PeriodicMotionTemplate,
+} from "./vision/periodicMotionMatcher.js";
 
 const cache = new NodeCache({ stdTTL: 3600 });
 const MIN_HOLDS_FOR_BEAM = 2;
@@ -24,6 +28,7 @@ export interface DialectIndex {
   singleHold: SingleHoldTemplate[];
   segmented: SegmentedTemplate[];
   dtwFallback: DtwTemplate[];
+  periodicMotion: PeriodicMotionTemplate[];
 }
 
 function segmentSequence(frames: Sequence): number[][] {
@@ -68,10 +73,21 @@ export async function buildDialectIndex(
   const singleHold: SingleHoldTemplate[] = [];
   const segmented: SegmentedTemplate[] = [];
   const dtwFallback: DtwTemplate[] = [];
+  const periodicMotion: PeriodicMotionTemplate[] = [];
 
   for (const s of samples) {
     const sequence = s.landmarks as Sequence;
+
     const holds = segmentSequence(sequence);
+    const periodic = detectPeriodicMotion(sequence, {
+      variantId: s.variantId,
+      word: s.word,
+      arabicText: s.arabicText,
+    });
+
+    if (periodic && holds.length < MIN_HOLDS_FOR_BEAM) {
+      periodicMotion.push(periodic);
+    }
 
     if (holds.length === 1) {
       singleHold.push({
@@ -87,30 +103,34 @@ export async function buildDialectIndex(
         arabicText: s.arabicText,
         holds,
       });
-    } else {
-      if (holds.length === 0) {
-        console.warn(
-          `⚠️ عينة "${s.word}" (variant ${s.variantId}) ما سجّلت ولا hold — على الأغلب تسجيل مهتز يستحق إعادة، استُخدمت كـ DTW fallback مؤقتاً.`,
-        );
-      }
-      const vectors = downsample(
-        sequence.map(frameToPoseVector),
-        MAX_DTW_TEMPLATE_FRAMES,
+    } else if (holds.length === 0 && !periodic) {
+      console.warn(
+        `⚠️ عينة "${s.word}" (variant ${s.variantId}) ما سجّلت ولا hold ولا حركة دورية — على الأغلب تسجيل مهتز يستحق إعادة، استُخدمت كـ DTW fallback مؤقتاً.`,
       );
-      dtwFallback.push({
-        variantId: s.variantId,
-        word: s.word,
-        arabicText: s.arabicText,
-        vectors,
-      });
     }
+
+    const vectors = downsample(
+      sequence.map(frameToPoseVector),
+      MAX_DTW_TEMPLATE_FRAMES,
+    );
+    dtwFallback.push({
+      variantId: s.variantId,
+      word: s.word,
+      arabicText: s.arabicText,
+      vectors,
+    });
   }
 
-  const index: DialectIndex = { singleHold, segmented, dtwFallback };
+  const index: DialectIndex = {
+    singleHold,
+    segmented,
+    dtwFallback,
+    periodicMotion,
+  };
   cache.set(cacheKey, index);
 
   console.log(
-    `🌳 فهرس "${dialect}": ${singleHold.length} حرف مفرد (single-hold)، ${segmented.length} إشارة متعددة الـ holds، ${dtwFallback.length} على مسار DTW الاحتياطي`,
+    `🌳 فهرس "${dialect}": ${singleHold.length} حرف مفرد (single-hold)، ${segmented.length} إشارة متعددة الـ holds، ${dtwFallback.length} على مسار DTW الاحتياطي، ${periodicMotion.length} حركة دورية`,
   );
 
   console.log(
@@ -125,8 +145,21 @@ export async function buildDialectIndex(
     "DTW fallback templates:",
     dtwFallback.map((s) => `${s.word} (${s.vectors.length} frames)`),
   );
+  console.log(
+    "Periodic motion templates:",
+    periodicMotion.map(
+      (s) =>
+        `${s.word} (قنوات: ${s.activeChannels.join(",")}, اتساع: ${CHANNEL_DEBUG(s)})`,
+    ),
+  );
 
   return index;
+}
+
+function CHANNEL_DEBUG(t: PeriodicMotionTemplate): string {
+  return t.activeChannels
+    .map((c) => `${c}=${t.amplitudeByChannel[c].toFixed(2)}`)
+    .join(" ");
 }
 
 export function clearDialectIndexCache(dialect?: string): void {
@@ -175,7 +208,7 @@ export class HoldBeamMatcher {
   }
 
   hasCandidates(): boolean {
-    return this.pool.length > 0;
+    return this.alive.length > 0;
   }
 
   reset(): void {
@@ -188,6 +221,14 @@ export class HoldBeamMatcher {
     return this.lastBestInfo;
   }
 
+  getDepth(): number {
+    return this.depth;
+  }
+
+  hasCompleteCandidate(): boolean {
+    return this.alive.some((c) => c.holds.length === this.depth);
+  }
+
   pushHold(vector: number[]): BeamMatchResult {
     const scored = this.alive
       .filter((c) => c.holds.length > this.depth)
@@ -198,8 +239,8 @@ export class HoldBeamMatcher {
       .filter((s) => s.distance <= this.opts.absoluteMaxDistance);
 
     if (scored.length === 0) {
-      this.reset();
-      return { best: null, status: "no_match" };
+      this.alive = [];
+      return { best: this.lastBestInfo, status: "no_match" };
     }
 
     scored.sort((a, b) => a.distance - b.distance);
@@ -227,12 +268,10 @@ export class HoldBeamMatcher {
     const stillLonger = this.alive.filter((c) => c.holds.length > this.depth);
 
     if (complete.length === 1 && stillLonger.length === 0) {
-      this.reset();
       return { best: bestInfo, status: "final" };
     }
 
     if (this.depth >= this.opts.maxDepth) {
-      this.reset();
       return { best: bestInfo, status: "final" };
     }
 

@@ -136,6 +136,10 @@ export class DtwFallbackMatcher {
     };
   }
 
+  hasQuery(): boolean {
+    return this.buffer.length >= this.opts.minQueryFrames;
+  }
+
   reset(): void {
     this.buffer = [];
     this.framesSinceEval = 0;

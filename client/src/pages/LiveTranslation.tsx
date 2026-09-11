@@ -6,7 +6,7 @@ import { DIALECTS } from "../constants/dialects";
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || undefined;
 
-const FRAME_SEND_INTERVAL_MS = 66;
+const FRAME_SEND_INTERVAL_MS = 100;
 
 interface LiveResult {
   arabicText: string;
